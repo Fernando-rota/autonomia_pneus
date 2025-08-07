@@ -1,82 +1,150 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 
-st.set_page_config(layout="wide", page_title="Dashboard de Autonomia dos Pneus")
+st.set_page_config(page_title="Painel de Autonomia dos Pneus", layout="wide")
 
-st.title("📊 Dashboard de Autonomia dos Pneus")
+st.title("📊 Painel de Autonomia dos Pneus")
+st.markdown("⬆️ Faça upload da planilha com as abas de manutenção e movimentação")
 
-uploaded_file = st.file_uploader("📂 Envie a planilha de controle de pneus (.xlsx)", type=["xlsx"])
+uploaded_file = st.file_uploader("Upload", type=["xlsx"])
 
 if uploaded_file:
-    # Detecta os nomes das abas de forma flexível
+    # Leitura das abas
     xls = pd.ExcelFile(uploaded_file)
-    sheet_manutencao = next((s for s in xls.sheet_names if 'manutencao' in s.lower()), None)
-    sheet_movimentacao = next((s for s in xls.sheet_names if 'pneu' in s.lower()), None)
+    if 'manutencao' in xls.sheet_names and 'pneu' in xls.sheet_names:
+        df_manutencao = pd.read_excel(xls, sheet_name="manutencao")
+        df_pneu = pd.read_excel(xls, sheet_name="pneu")
 
-    if not sheet_manutencao or not sheet_movimentacao:
-        st.error("❌ Não foi possível encontrar as abas 'manutencao' e 'pneu'. Verifique os nomes.")
-        st.stop()
+        # Padronizar nome de colunas
+        df_manutencao.columns = df_manutencao.columns.str.strip().str.upper()
+        df_pneu.columns = df_pneu.columns.str.strip()
 
-    df_manutencao = pd.read_excel(xls, sheet_name=sheet_manutencao)
-    df_pneu = pd.read_excel(xls, sheet_name=sheet_movimentacao)
+        # Renomear a coluna de placa na aba pneu
+        if 'Veículo - Placa' in df_pneu.columns:
+            df_pneu.rename(columns={'Veículo - Placa': 'PLACA'}, inplace=True)
+        elif 'Veículo - Placa ' in df_pneu.columns:
+            df_pneu.rename(columns={'Veículo - Placa ': 'PLACA'}, inplace=True)
 
-    # Preprocessamento: garante que as colunas importantes existam
-    required_columns = ['PLACA', 'MARCA', 'EIXO', 'AUTONOMIA (km)']
-    for col in required_columns:
-        if col not in df_pneu.columns:
-            st.error(f"❌ Coluna obrigatória ausente: {col}")
-            st.stop()
+        # Verificação de coluna obrigatória
+        if 'PLACA' not in df_manutencao.columns:
+            st.error("❌ Coluna obrigatória ausente: PLACA na aba 'manutencao'")
+        elif 'PLACA' not in df_pneu.columns:
+            st.error("❌ Coluna obrigatória ausente: PLACA na aba 'pneu'")
+        else:
+            # Filtros interativos
+            placas = sorted(set(df_manutencao['PLACA'].dropna().unique()) | set(df_pneu['PLACA'].dropna().unique()))
+            eixos = sorted(df_pneu['Eixo'].dropna().unique()) if 'Eixo' in df_pneu.columns else []
+            marcas = sorted(df_pneu['Marca'].dropna().unique()) if 'Marca' in df_pneu.columns else []
 
-    # Filtros interativos
-    placas = sorted(df_pneu['PLACA'].dropna().unique())
-    marcas = sorted(df_pneu['MARCA'].dropna().unique())
-    eixos = sorted(df_pneu['EIXO'].dropna().unique())
+            col1, col2, col3 = st.sidebar.columns(3)
+            selected_placa = st.sidebar.multiselect("Filtrar por Placa", placas)
+            selected_eixo = st.sidebar.multiselect("Filtrar por Eixo", eixos)
+            selected_marca = st.sidebar.multiselect("Filtrar por Marca", marcas)
 
-    with st.sidebar:
-        st.header("🔎 Filtros")
-        selected_placas = st.multiselect("Placa", placas, default=placas)
-        selected_marcas = st.multiselect("Marca", marcas, default=marcas)
-        selected_eixos = st.multiselect("Eixo", eixos, default=eixos)
+            # Aplicar filtros
+            if selected_placa:
+                df_manutencao = df_manutencao[df_manutencao['PLACA'].isin(selected_placa)]
+                df_pneu = df_pneu[df_pneu['PLACA'].isin(selected_placa)]
+            if selected_eixo and 'Eixo' in df_pneu.columns:
+                df_pneu = df_pneu[df_pneu['Eixo'].isin(selected_eixo)]
+            if selected_marca and 'Marca' in df_pneu.columns:
+                df_pneu = df_pneu[df_pneu['Marca'].isin(selected_marca)]
 
-    # Aplica filtros
-    df_filtered = df_pneu[
-        df_pneu['PLACA'].isin(selected_placas) &
-        df_pneu['MARCA'].isin(selected_marcas) &
-        df_pneu['EIXO'].isin(selected_eixos)
-    ]
+            # Separação por abas
+            aba = st.tabs(["📊 Resumo Geral", "🔍 Detalhamento", "⚠️ Pneus com Menor Autonomia"])
 
-    if df_filtered.empty:
-        st.warning("⚠️ Nenhum dado encontrado com os filtros selecionados.")
-        st.stop()
+            with aba[0]:
+                st.subheader("📈 Estatísticas de Autonomia")
+                if not df_pneu.empty:
+                    st.dataframe(df_pneu.describe(include='all'))
+                else:
+                    st.warning("Nenhum dado encontrado com os filtros selecionados.")
 
-    # Tabela com destaque nos pneus com menor autonomia
-    menor_autonomia = df_filtered['AUTONOMIA (km)'].quantile(0.1)
+            with aba[1]:
+                st.subheader("🔍 Detalhamento dos Registros")
+                st.dataframe(df_pneu)
 
-    df_filtered['DESTAQUE'] = df_filtered['AUTONOMIA (km)'].apply(
-        lambda x: '🔴 Baixa Autonomia' if x <= menor_autonomia else ''
-    )
+            with aba[2]:
+                st.subheader("⚠️ Pneus com Menor Autonomia")
+                if 'Autonomia' in df_pneu.columns:
+                    df_piores = df_pneu.sort_values(by='Autonomia').head(10)
+                    st.dataframe(df_piores)
+                else:
+                    st.warning("Coluna 'Autonomia' não encontrada.")
+    else:
+        st.error("❌ As abas 'manutencao' e 'pneu' devem estar presentes na planilha.")
+import streamlit as st
+import pandas as pd
 
-    aba1, aba2, aba3 = st.tabs(["📋 Visão Geral", "🔧 Manutenção", "🛞 Pneus com Menor Autonomia"])
+st.set_page_config(page_title="Painel de Autonomia dos Pneus", layout="wide")
 
-    with aba1:
-        st.subheader("📈 Dados Filtrados")
-        st.dataframe(df_filtered.sort_values(by='AUTONOMIA (km)', ascending=False), use_container_width=True)
+st.title("📊 Painel de Autonomia dos Pneus")
+st.markdown("⬆️ Faça upload da planilha com as abas de manutenção e movimentação")
 
-        media_geral = df_filtered['AUTONOMIA (km)'].mean()
-        st.metric("📌 Autonomia Média dos Pneus Filtrados", f"{media_geral:,.0f} km")
+uploaded_file = st.file_uploader("Upload", type=["xlsx"])
 
-    with aba2:
-        st.subheader("🔧 Dados de Manutenção")
-        st.dataframe(df_manutencao, use_container_width=True)
+if uploaded_file:
+    # Leitura das abas
+    xls = pd.ExcelFile(uploaded_file)
+    if 'manutencao' in xls.sheet_names and 'pneu' in xls.sheet_names:
+        df_manutencao = pd.read_excel(xls, sheet_name="manutencao")
+        df_pneu = pd.read_excel(xls, sheet_name="pneu")
 
-    with aba3:
-        st.subheader("🛞 Pneus com Baixa Autonomia (10% menores)")
-        st.dataframe(
-            df_filtered[df_filtered['AUTONOMIA (km)'] <= menor_autonomia].sort_values(by='AUTONOMIA (km)'),
-            use_container_width=True
-        )
-        st.info(f"{(df_filtered['AUTONOMIA (km)'] <= menor_autonomia).sum()} pneus estão no grupo com menor autonomia (até {menor_autonomia:,.0f} km).")
+        # Padronizar nome de colunas
+        df_manutencao.columns = df_manutencao.columns.str.strip().str.upper()
+        df_pneu.columns = df_pneu.columns.str.strip()
 
-else:
-    st.warning("👆 Envie uma planilha .xlsx para começar.")
+        # Renomear a coluna de placa na aba pneu
+        if 'Veículo - Placa' in df_pneu.columns:
+            df_pneu.rename(columns={'Veículo - Placa': 'PLACA'}, inplace=True)
+        elif 'Veículo - Placa ' in df_pneu.columns:
+            df_pneu.rename(columns={'Veículo - Placa ': 'PLACA'}, inplace=True)
+
+        # Verificação de coluna obrigatória
+        if 'PLACA' not in df_manutencao.columns:
+            st.error("❌ Coluna obrigatória ausente: PLACA na aba 'manutencao'")
+        elif 'PLACA' not in df_pneu.columns:
+            st.error("❌ Coluna obrigatória ausente: PLACA na aba 'pneu'")
+        else:
+            # Filtros interativos
+            placas = sorted(set(df_manutencao['PLACA'].dropna().unique()) | set(df_pneu['PLACA'].dropna().unique()))
+            eixos = sorted(df_pneu['Eixo'].dropna().unique()) if 'Eixo' in df_pneu.columns else []
+            marcas = sorted(df_pneu['Marca'].dropna().unique()) if 'Marca' in df_pneu.columns else []
+
+            col1, col2, col3 = st.sidebar.columns(3)
+            selected_placa = st.sidebar.multiselect("Filtrar por Placa", placas)
+            selected_eixo = st.sidebar.multiselect("Filtrar por Eixo", eixos)
+            selected_marca = st.sidebar.multiselect("Filtrar por Marca", marcas)
+
+            # Aplicar filtros
+            if selected_placa:
+                df_manutencao = df_manutencao[df_manutencao['PLACA'].isin(selected_placa)]
+                df_pneu = df_pneu[df_pneu['PLACA'].isin(selected_placa)]
+            if selected_eixo and 'Eixo' in df_pneu.columns:
+                df_pneu = df_pneu[df_pneu['Eixo'].isin(selected_eixo)]
+            if selected_marca and 'Marca' in df_pneu.columns:
+                df_pneu = df_pneu[df_pneu['Marca'].isin(selected_marca)]
+
+            # Separação por abas
+            aba = st.tabs(["📊 Resumo Geral", "🔍 Detalhamento", "⚠️ Pneus com Menor Autonomia"])
+
+            with aba[0]:
+                st.subheader("📈 Estatísticas de Autonomia")
+                if not df_pneu.empty:
+                    st.dataframe(df_pneu.describe(include='all'))
+                else:
+                    st.warning("Nenhum dado encontrado com os filtros selecionados.")
+
+            with aba[1]:
+                st.subheader("🔍 Detalhamento dos Registros")
+                st.dataframe(df_pneu)
+
+            with aba[2]:
+                st.subheader("⚠️ Pneus com Menor Autonomia")
+                if 'Autonomia' in df_pneu.columns:
+                    df_piores = df_pneu.sort_values(by='Autonomia').head(10)
+                    st.dataframe(df_piores)
+                else:
+                    st.warning("Coluna 'Autonomia' não encontrada.")
+    else:
+        st.error("❌ As abas 'manutencao' e 'pneu' devem estar presentes na planilha.")
