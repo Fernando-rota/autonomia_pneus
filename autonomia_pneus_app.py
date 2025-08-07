@@ -1,106 +1,82 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from scipy import stats
 
-st.set_page_config(page_title="Autonomia dos Pneus", layout="wide")
+st.set_page_config(layout="wide", page_title="Dashboard de Autonomia dos Pneus")
 
-st.title("📊 Painel de Autonomia dos Pneus")
+st.title("📊 Dashboard de Autonomia dos Pneus")
 
-uploaded_file = st.file_uploader("📥 Faça upload da planilha com as abas de manutenção e movimentação", type=["xlsx"])
-
-# Função para interpretar sigla de posição do pneu
-def interpretar_posicao(sigla):
-    if pd.isna(sigla) or len(sigla) != 3:
-        return ("Desconhecido", "Desconhecido", "Desconhecido")
-    eixo = sigla[0]
-    lado = "Direito" if sigla[1] == "D" else "Esquerdo"
-    posicao = "Interno" if sigla[2] == "I" else "Externo"
-    return (eixo, lado, posicao)
+uploaded_file = st.file_uploader("📂 Envie a planilha de controle de pneus (.xlsx)", type=["xlsx"])
 
 if uploaded_file:
-    # Leitura das duas abas
-    aba_manut = pd.read_excel(uploaded_file, sheet_name=0)
-    aba_pneu = pd.read_excel(uploaded_file, sheet_name=1)
+    # Detecta os nomes das abas de forma flexível
+    xls = pd.ExcelFile(uploaded_file)
+    sheet_manutencao = next((s for s in xls.sheet_names if 'manutencao' in s.lower()), None)
+    sheet_movimentacao = next((s for s in xls.sheet_names if 'pneu' in s.lower()), None)
 
-    # Filtro: apenas posições válidas com prefixo D (ex: DDI, DDE)
-    aba_pneu = aba_pneu[aba_pneu['Sigla da Posição do Pneu'].str.startswith("D", na=False)]
+    if not sheet_manutencao or not sheet_movimentacao:
+        st.error("❌ Não foi possível encontrar as abas 'manutencao' e 'pneu'. Verifique os nomes.")
+        st.stop()
 
-    # Conversões
-    aba_pneu['Data da Movimentação'] = pd.to_datetime(aba_pneu['Data da Movimentação'], errors='coerce')
-    aba_pneu['Pneu - Hodômetro'] = pd.to_numeric(aba_pneu['Pneu - Hodômetro'], errors='coerce')
+    df_manutencao = pd.read_excel(xls, sheet_name=sheet_manutencao)
+    df_pneu = pd.read_excel(xls, sheet_name=sheet_movimentacao)
 
-    # Decodificar posição
-    posicoes = aba_pneu['Sigla da Posição do Pneu'].apply(interpretar_posicao)
-    aba_pneu[['Eixo', 'Lado', 'Posição']] = pd.DataFrame(posicoes.tolist(), index=aba_pneu.index)
+    # Preprocessamento: garante que as colunas importantes existam
+    required_columns = ['PLACA', 'MARCA', 'EIXO', 'AUTONOMIA (km)']
+    for col in required_columns:
+        if col not in df_pneu.columns:
+            st.error(f"❌ Coluna obrigatória ausente: {col}")
+            st.stop()
 
-    # Agrupar por pneu
-    df_autonomia = aba_pneu.groupby('Pneu - Série').agg({
-        'Pneu - Hodômetro': ['min', 'max'],
-        'Data da Movimentação': ['min', 'max'],
-        'Veículo - Placa': 'first',
-        'Pneu - Marca (Atual)': 'first',
-        'Eixo': 'first',
-        'Lado': 'first',
-        'Posição': 'first'
-    }).reset_index()
+    # Filtros interativos
+    placas = sorted(df_pneu['PLACA'].dropna().unique())
+    marcas = sorted(df_pneu['MARCA'].dropna().unique())
+    eixos = sorted(df_pneu['EIXO'].dropna().unique())
 
-    df_autonomia.columns = [
-        'Pneu - Série', 'KM Inicial', 'KM Final', 'Data Inicial', 'Data Final',
-        'Placa', 'Marca', 'Eixo', 'Lado', 'Posição'
-    ]
-    df_autonomia['Autonomia (KM)'] = df_autonomia['KM Final'] - df_autonomia['KM Inicial']
-    df_autonomia = df_autonomia.dropna(subset=['Autonomia (KM)'])
-    df_autonomia = df_autonomia[df_autonomia['Autonomia (KM)'] > 0]
-
-    # Filtros
     with st.sidebar:
-        st.header("🎛️ Filtros")
-        placas = st.multiselect("Filtrar por Placa", options=sorted(df_autonomia['Placa'].unique()), default=None)
-        eixos = st.multiselect("Filtrar por Eixo", options=sorted(df_autonomia['Eixo'].unique()), default=None)
-        marcas = st.multiselect("Filtrar por Marca", options=sorted(df_autonomia['Marca'].unique()), default=None)
+        st.header("🔎 Filtros")
+        selected_placas = st.multiselect("Placa", placas, default=placas)
+        selected_marcas = st.multiselect("Marca", marcas, default=marcas)
+        selected_eixos = st.multiselect("Eixo", eixos, default=eixos)
 
-    # Aplicar filtros
-    df_filtrado = df_autonomia.copy()
-    if placas:
-        df_filtrado = df_filtrado[df_filtrado['Placa'].isin(placas)]
-    if eixos:
-        df_filtrado = df_filtrado[df_filtrado['Eixo'].isin(eixos)]
-    if marcas:
-        df_filtrado = df_filtrado[df_filtrado['Marca'].isin(marcas)]
+    # Aplica filtros
+    df_filtered = df_pneu[
+        df_pneu['PLACA'].isin(selected_placas) &
+        df_pneu['MARCA'].isin(selected_marcas) &
+        df_pneu['EIXO'].isin(selected_eixos)
+    ]
 
-    # Tabs (Abas)
-    aba1, aba2, aba3 = st.tabs(["📊 Resumo Geral", "📋 Detalhamento", "⚠️ Pneus com Menor Autonomia"])
+    if df_filtered.empty:
+        st.warning("⚠️ Nenhum dado encontrado com os filtros selecionados.")
+        st.stop()
+
+    # Tabela com destaque nos pneus com menor autonomia
+    menor_autonomia = df_filtered['AUTONOMIA (km)'].quantile(0.1)
+
+    df_filtered['DESTAQUE'] = df_filtered['AUTONOMIA (km)'].apply(
+        lambda x: '🔴 Baixa Autonomia' if x <= menor_autonomia else ''
+    )
+
+    aba1, aba2, aba3 = st.tabs(["📋 Visão Geral", "🔧 Manutenção", "🛞 Pneus com Menor Autonomia"])
 
     with aba1:
-        st.subheader("📊 Estatísticas de Autonomia")
-        if not df_filtrado.empty:
-            autonomias = df_filtrado['Autonomia (KM)']
-            media = autonomias.mean()
-            desvio = autonomias.std(ddof=1)
-            n = len(autonomias)
-            confidence = 0.85
-            t_value = stats.t.ppf((1 + confidence) / 2, df=n - 1)
-            margem_erro = t_value * desvio / np.sqrt(n)
-            intervalo_inf = media - margem_erro
-            intervalo_sup = media + margem_erro
+        st.subheader("📈 Dados Filtrados")
+        st.dataframe(df_filtered.sort_values(by='AUTONOMIA (km)', ascending=False), use_container_width=True)
 
-            col1, col2, col3 = st.columns(3)
-            col1.metric("🛞 Média de Autonomia", f"{media:,.0f} KM")
-            col2.metric("🔐 Confiança 85%", f"{intervalo_inf:,.0f} KM - {intervalo_sup:,.0f} KM")
-            col3.metric("📦 Total de Pneus", f"{n}")
-
-            st.bar_chart(df_filtrado.set_index('Pneu - Série')['Autonomia (KM)'])
-        else:
-            st.warning("Nenhum dado encontrado com os filtros selecionados.")
+        media_geral = df_filtered['AUTONOMIA (km)'].mean()
+        st.metric("📌 Autonomia Média dos Pneus Filtrados", f"{media_geral:,.0f} km")
 
     with aba2:
-        st.subheader("📋 Detalhamento por Pneu")
-        st.dataframe(df_filtrado.sort_values(by="Autonomia (KM)", ascending=False), use_container_width=True)
+        st.subheader("🔧 Dados de Manutenção")
+        st.dataframe(df_manutencao, use_container_width=True)
 
     with aba3:
-        st.subheader("⚠️ Pneus com Menor Autonomia")
-        qtd = st.slider("Quantidade de pneus a destacar", 3, 20, 5)
-        df_menor = df_filtrado.sort_values(by="Autonomia (KM)").head(qtd)
-        st.dataframe(df_menor, use_container_width=True)
-        st.bar_chart(df_menor.set_index('Pneu - Série')['Autonomia (KM)'])
+        st.subheader("🛞 Pneus com Baixa Autonomia (10% menores)")
+        st.dataframe(
+            df_filtered[df_filtered['AUTONOMIA (km)'] <= menor_autonomia].sort_values(by='AUTONOMIA (km)'),
+            use_container_width=True
+        )
+        st.info(f"{(df_filtered['AUTONOMIA (km)'] <= menor_autonomia).sum()} pneus estão no grupo com menor autonomia (até {menor_autonomia:,.0f} km).")
+
+else:
+    st.warning("👆 Envie uma planilha .xlsx para começar.")
