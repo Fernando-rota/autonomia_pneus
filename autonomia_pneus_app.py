@@ -16,6 +16,12 @@ def achar_coluna_km(df):
             return col
     return None
 
+def intervalo_medio(series):
+    s = series.dropna().sort_values()
+    if len(s) < 2:
+        return np.nan
+    return s.diff().mean()
+
 uploaded_file = st.file_uploader("Faça upload da planilha Excel (.xlsx) com abas 'manutencao' e 'pneu'", type=["xlsx"])
 
 if uploaded_file:
@@ -47,12 +53,8 @@ if uploaded_file:
         # ----------- Indicador 1: Frequência e intervalo entre manutenções -----------
         manut_freq = df_manut.groupby('PLACA').agg(
             total_manut=('PLACA', 'count'),
-            km_medio_entre_manut=(
-                'KM_DO_VEICULO', lambda x: x.sort_values().diff().mean()
-            ),
-            dias_medio_entre_manut=(
-                'DATA DA MANUTENÇÃO', lambda x: x.sort_values().diff().dt.days.mean()
-            )
+            km_medio_entre_manut=('KM_DO_VEICULO', intervalo_medio),
+            dias_medio_entre_manut=('DATA DA MANUTENÇÃO', intervalo_medio)
         ).reset_index()
 
         # ----------- Indicador 2: Tipos de manutenção mais comuns -----------
