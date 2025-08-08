@@ -37,6 +37,10 @@ if uploaded_file:
             if 'VEÍCULO - PLACA' in df.columns:
                 df.rename(columns={'VEÍCULO - PLACA': 'PLACA'}, inplace=True)
 
+        # Padronizar descrição da manutenção (remover espaços e colocar em título)
+        if 'DESCRIÇÃO DA MANUTENÇÃO' in df_manut.columns:
+            df_manut['DESCRIÇÃO DA MANUTENÇÃO'] = df_manut['DESCRIÇÃO DA MANUTENÇÃO'].astype(str).str.strip().str.title()
+
         # Identifica coluna KM na manutenção
         col_km = achar_coluna_km(df_manut)
         if col_km is None:
@@ -56,20 +60,25 @@ if uploaded_file:
             km_medio_entre_manut=('KM_DO_VEICULO', intervalo_medio),
             dias_medio_entre_manut=('DATA DA MANUTENÇÃO', intervalo_medio)
         ).reset_index()
+        manut_freq = manut_freq.sort_values(by='total_manut', ascending=False)
 
         # ----------- Indicador 2: Tipos de manutenção mais comuns -----------
         manut_tipo = df_manut['DESCRIÇÃO DA MANUTENÇÃO'].value_counts().reset_index()
         manut_tipo.columns = ['Tipo de Manutenção', 'Quantidade']
+        manut_tipo = manut_tipo.sort_values(by='Quantidade', ascending=False)
 
         # ----------- Indicador 4: Análise da movimentação dos pneus -----------
         pneu_analise = df_pneu.groupby('PLACA').agg(
             total_pneus_trocados=('PLACA', 'count'),
         ).reset_index()
+        pneu_analise = pneu_analise.sort_values(by='total_pneus_trocados', ascending=False)
 
         # ----------- Indicador 5: Pneus com baixa autonomia -----------
         if 'AUTONOMIA' in df_pneu.columns:
             autonomia_media = df_pneu['AUTONOMIA'].mean()
-            pneus_baixa_autonomia = df_pneu[df_pneu['AUTONOMIA'] < autonomia_media]
+            pneus_baixa_autonomia = df_pneu[df_pneu['AUTONOMIA'] < autonomia_media].copy()
+            pneus_baixa_autonomia['AUTONOMIA'] = pneus_baixa_autonomia['AUTONOMIA'].round(2)
+            pneus_baixa_autonomia = pneus_baixa_autonomia.sort_values(by='AUTONOMIA')
         else:
             pneus_baixa_autonomia = pd.DataFrame()
 
