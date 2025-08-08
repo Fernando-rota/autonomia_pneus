@@ -2,12 +2,9 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-from sklearn.cluster import KMeans
-from sklearn.preprocessing import StandardScaler
-from sklearn.decomposition import PCA
 
-st.set_page_config(page_title="Painel de Manutenção com ML", layout="wide")
-st.title("🚛 Painel Completo com Machine Learning para Manutenção e Pneus")
+st.set_page_config(page_title="Indicadores Manutenção e Pneus", layout="wide")
+st.title("📊 Indicadores de Manutenção e Pneus")
 
 def achar_coluna_km(df):
     colunas_km_possiveis = [
@@ -19,7 +16,7 @@ def achar_coluna_km(df):
             return col
     return None
 
-uploaded_file = st.file_uploader("Carregue sua planilha Excel (.xlsx)", type=["xlsx"])
+uploaded_file = st.file_uploader("Faça upload da planilha Excel (.xlsx) com abas 'manutencao' e 'pneu'", type=["xlsx"])
 
 if uploaded_file:
     xls = pd.ExcelFile(uploaded_file)
@@ -43,62 +40,76 @@ if uploaded_file:
         else:
             df_manut['KM_DO_VEICULO'] = pd.to_numeric(df_manut[col_km], errors='coerce')
 
-        # Preprocessar VALOR no pneu
-        if 'VALOR' in df_pneu.columns:
-            df_pneu['VALOR'] = pd.to_numeric(df_pneu['VALOR'], errors='coerce')
-        else:
-            df_pneu['VALOR'] = 0
+        # Datas
+        df_manut['DATA DA MANUTENÇÃO'] = pd.to_datetime(df_manut.get('DATA DA MANUTENÇÃO'), errors='coerce')
+        df_pneu['DATA DA MOVIMENTAÇÃO'] = pd.to_datetime(df_pneu.get('DATA DA MOVIMENTAÇÃO'), errors='coerce')
 
-        # Conversão de datas
-        if 'DATA DA MANUTENÇÃO' in df_manut.columns:
-            df_manut['DATA DA MANUTENÇÃO'] = pd.to_datetime(df_manut['DATA DA MANUTENÇÃO'], errors='coerce')
-        if 'DATA DA MOVIMENTAÇÃO' in df_pneu.columns:
-            df_pneu['DATA DA MOVIMENTAÇÃO'] = pd.to_datetime(df_pneu['DATA DA MOVIMENTAÇÃO'], errors='coerce')
-
-        # Agrupar dados por veículo para ML
-        manut_agg = df_manut.groupby('PLACA').agg(
+        # ----------- Indicador 1: Frequência e intervalo entre manutenções -----------
+        manut_freq = df_manut.groupby('PLACA').agg(
             total_manut=('PLACA', 'count'),
-            km_medio_diff=('KM_DO_VEICULO', lambda x: x.sort_values().diff().mean())
+            km_medio_entre_manut=(
+                'KM_DO_VEICULO', lambda x: x.sort_values().diff().mean()
+            ),
+            dias_medio_entre_manut=(
+                'DATA DA MANUTENÇÃO', lambda x: x.sort_values().diff().dt.days.mean()
+            )
         ).reset_index()
 
-        pneu_agg = df_pneu.groupby('PLACA').agg(
-            total_pneu_mov=('PLACA', 'count'),
-            valor_total_pneu=('VALOR', 'sum')
+        # ----------- Indicador 2: Tipos de manutenção mais comuns -----------
+        manut_tipo = df_manut['DESCRIÇÃO DA MANUTENÇÃO'].value_counts().reset_index()
+        manut_tipo.columns = ['Tipo de Manutenção', 'Quantidade']
+
+        # ----------- Indicador 4: Análise da movimentação dos pneus -----------
+        pneu_analise = df_pneu.groupby('PLACA').agg(
+            total_pneus_trocados=('PLACA', 'count'),
         ).reset_index()
 
-        df_features = pd.merge(manut_agg, pneu_agg, on='PLACA', how='outer').fillna(0)
+        # ----------- Indicador 5: Pneus com baixa autonomia -----------
+        if 'AUTONOMIA' in df_pneu.columns:
+            autonomia_media = df_pneu['AUTONOMIA'].mean()
+            pneus_baixa_autonomia = df_pneu[df_pneu['AUTONOMIA'] < autonomia_media]
+        else:
+            pneus_baixa_autonomia = pd.DataFrame()
 
-        # Features para clusterização
-        features = df_features[['total_manut', 'km_medio_diff', 'total_pneu_mov', 'valor_total_pneu']]
-        features = features.replace([np.inf, -np.inf], np.nan).fillna(0)
+        abas = st.tabs([
+            "Frequência e Intervalo de Manutenção",
+            "Tipos de Manutenção",
+            "Movimentação de Pneus",
+            "Pneus com Baixa Autonomia"
+        ])
 
-        scaler = StandardScaler()
-        X_scaled = scaler.fit_transform(features)
+        with abas[0]:
+            st.subheader("Frequência e Intervalo entre Manutenções por Veículo")
+            st.dataframe(manut_freq)
+            fig = px.histogram(manut_freq, x='km_medio_entre_manut',
+                               nbins=30, title="Distribuição do Intervalo Médio de KM entre Manutenções")
+            st.plotly_chart(fig, use_container_width=True)
 
-        n_clusters = st.sidebar.slider("Número de clusters (grupos)", 2, 10, 3)
-        kmeans = KMeans(n_clusters=n_clusters, random_state=42)
-        df_features['cluster'] = kmeans.fit_predict(X_scaled)
+        with abas[1]:
+            st.subheader("Tipos de Manutenção mais Comuns")
+            st.dataframe(manut_tipo)
+            fig = px.bar(manut_tipo.head(20), x='Quantidade', y='Tipo de Manutenção',
+                         orientation='h', title='Top 20 Tipos de Manutenção')
+            st.plotly_chart(fig, use_container_width=True)
 
-        # PCA para visualização
-        pca = PCA(n_components=2)
-        components = pca.fit_transform(X_scaled)
-        df_features['pca1'] = components[:, 0]
-        df_features['pca2'] = components[:, 1]
+        with abas[2]:
+            st.subheader("Total de Pneus Trocados por Veículo")
+            st.dataframe(pneu_analise)
+            fig = px.bar(pneu_analise, x='PLACA', y='total_pneus_trocados',
+                         title='Pneus Trocados por Veículo')
+            st.plotly_chart(fig, use_container_width=True)
 
-        st.subheader("Clusters de Veículos baseado no Histórico de Manutenção e Pneus")
-        st.dataframe(df_features)
-
-        fig = px.scatter(df_features, x='pca1', y='pca2', color='cluster', hover_data=['PLACA'],
-                         title='Visualização dos clusters de veículos (PCA 2D)')
-        st.plotly_chart(fig, use_container_width=True)
-
-        st.markdown("""
-        ### Interpretação inicial:
-        - Cada cluster representa um grupo de veículos com perfil similar em termos de quantidade de manutenções, valores gastos e movimentações de pneus.
-        - Pode-se investigar cada grupo para entender causas e planejar ações específicas.
-        """)
+        with abas[3]:
+            st.subheader("Pneus com Autonomia Abaixo da Média")
+            if not pneus_baixa_autonomia.empty:
+                st.dataframe(pneus_baixa_autonomia)
+                fig = px.histogram(pneus_baixa_autonomia, x='AUTONOMIA',
+                                   nbins=20, title='Distribuição de Autonomia Baixa')
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("Coluna 'AUTONOMIA' não encontrada na planilha de pneus.")
 
     else:
-        st.error("A planilha deve conter abas chamadas exatamente 'manutencao' e 'pneu'.")
+        st.error("A planilha deve conter abas chamadas 'manutencao' e 'pneu'.")
 else:
-    st.info("Por favor, faça upload da planilha para iniciar a análise.")
+    st.info("Faça upload da planilha para iniciar a análise.")
