@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from io import BytesIO
+import tempfile
 
 # ---------------------------
 # Função para download Excel
@@ -25,18 +26,27 @@ st.title("📊 Dashboard de Pneus")
 arquivo = st.file_uploader("📂 Envie a planilha de pneus (.xls ou .xlsx)", type=["xls", "xlsx"])
 
 if arquivo:
-    try:
-        # Primeiro tenta como xlsx
-        xl = pd.ExcelFile(arquivo, engine="openpyxl")
-    except:
-        # Se falhar, tenta como xls
-        xl = pd.ExcelFile(arquivo, engine="xlrd")
+    # Detectar extensão
+    nome_arquivo = arquivo.name.lower()
+
+    if nome_arquivo.endswith(".xls"):
+        # Converte .xls -> .xlsx
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+            df_tmp = pd.read_excel(arquivo, engine="xlrd", sheet_name=None)  # lê todas as abas
+            with pd.ExcelWriter(tmp.name, engine="openpyxl") as writer:
+                for sheet, df_sheet in df_tmp.items():
+                    df_sheet.to_excel(writer, sheet_name=sheet, index=False)
+            excel_convertido = pd.ExcelFile(tmp.name, engine="openpyxl")
+
+    else:
+        # Se já for .xlsx
+        excel_convertido = pd.ExcelFile(arquivo, engine="openpyxl")
 
     # Seleciona a aba
-    aba = st.selectbox("Selecione a aba da planilha:", xl.sheet_names)
+    aba = st.selectbox("Selecione a aba da planilha:", excel_convertido.sheet_names)
 
     # Carregar dados
-    df = xl.parse(aba)
+    df = excel_convertido.parse(aba)
 
     # Converter colunas de data automaticamente (se existirem)
     for col in df.columns:
