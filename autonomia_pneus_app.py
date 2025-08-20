@@ -22,15 +22,21 @@ st.title("📊 Dashboard de Pneus")
 # ---------------------------
 # Upload do Excel
 # ---------------------------
-arquivo = st.file_uploader("📂 Envie a planilha de pneus (.xlsx)", type=["xlsx"])
+arquivo = st.file_uploader("📂 Envie a planilha de pneus (.xls ou .xlsx)", type=["xls", "xlsx"])
 
 if arquivo:
-    # Mostrar abas da planilha
-    xl = pd.ExcelFile(arquivo)
+    try:
+        # Primeiro tenta como xlsx
+        xl = pd.ExcelFile(arquivo, engine="openpyxl")
+    except:
+        # Se falhar, tenta como xls
+        xl = pd.ExcelFile(arquivo, engine="xlrd")
+
+    # Seleciona a aba
     aba = st.selectbox("Selecione a aba da planilha:", xl.sheet_names)
 
     # Carregar dados
-    df = pd.read_excel(arquivo, sheet_name=aba)
+    df = xl.parse(aba)
 
     # Converter colunas de data automaticamente (se existirem)
     for col in df.columns:
@@ -90,23 +96,26 @@ if arquivo:
     st.subheader("📈 Gráficos")
 
     # Pneus por Status
-    fig_status = px.histogram(df_filtrado, x="Status", color="Status", title="Distribuição por Status")
-    st.plotly_chart(fig_status, use_container_width=True)
+    if "Status" in df_filtrado.columns:
+        fig_status = px.histogram(df_filtrado, x="Status", color="Status", title="Distribuição por Status")
+        st.plotly_chart(fig_status, use_container_width=True)
 
     # Pneus por Marca
-    fig_marca = px.histogram(df_filtrado, x="Marca (Atual)", color="Marca (Atual)", title="Distribuição por Marca")
-    st.plotly_chart(fig_marca, use_container_width=True)
+    if "Marca (Atual)" in df_filtrado.columns:
+        fig_marca = px.histogram(df_filtrado, x="Marca (Atual)", color="Marca (Atual)", title="Distribuição por Marca")
+        st.plotly_chart(fig_marca, use_container_width=True)
 
     # Km Acumulado por Veículo
-    fig_km = px.bar(
-        df_filtrado,
-        x="Veículo - Descrição",
-        y="Vida do Pneu - Km. Acumulado",
-        color="Veículo - Descrição",
-        title="Km Acumulado por Veículo",
-        text="Vida do Pneu - Km. Acumulado"
-    )
-    st.plotly_chart(fig_km, use_container_width=True)
+    if "Vida do Pneu - Km. Acumulado" in df_filtrado.columns and "Veículo - Descrição" in df_filtrado.columns:
+        fig_km = px.bar(
+            df_filtrado,
+            x="Veículo - Descrição",
+            y="Vida do Pneu - Km. Acumulado",
+            color="Veículo - Descrição",
+            title="Km Acumulado por Veículo",
+            text="Vida do Pneu - Km. Acumulado"
+        )
+        st.plotly_chart(fig_km, use_container_width=True)
 
 else:
-    st.info("⬆️ Envie um arquivo Excel para começar a análise.")
+    st.info("⬆️ Envie um arquivo Excel (.xls ou .xlsx) para começar a análise.")
