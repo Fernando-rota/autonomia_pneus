@@ -38,17 +38,14 @@ if arquivo:
     df = pd.concat([df, df_extra], ignore_index=True)
     df["Km Rodado até Aferição"] = df["Observação - Km"] - df["Hodômetro Inicial"]
 
-    # Filtrar apenas pneus que possuem Km Rodado até Aferição
-    df_com_km = df[df["Km Rodado até Aferição"].notna()]
-
     aba1, aba2, aba3 = st.tabs(["📌 Indicadores", "📈 Gráficos", "📑 Tabela Completa"])
 
     # ----------------- INDICADORES -----------------
     with aba1:
         st.subheader("📌 Indicadores Gerais")
 
-        total_pneus = df_com_km["Referência"].nunique()
-        status_counts = df_com_km["Status"].value_counts()
+        total_pneus = df["Referência"].nunique()
+        status_counts = df["Status"].value_counts()
         estoque = status_counts.get("Estoque", 0)
         sucata = status_counts.get("Sucata", 0)
         caminhao = status_counts.get("Caminhão", 0)
@@ -60,10 +57,10 @@ if arquivo:
         col4.metric("🚚 Caminhão", caminhao)
 
         col5, col6, col7 = st.columns(3)
-        media_sulco = df_com_km["Aferição - Sulco"].dropna().mean()
-        media_km = df_com_km["Km Rodado até Aferição"].dropna().mean()
-        pneu_critico = df_com_km[df_com_km["Aferição - Sulco"] < 2]
-        perc_critico = len(pneu_critico) / len(df_com_km) * 100
+        media_sulco = df["Aferição - Sulco"].dropna().mean()
+        media_km = df["Km Rodado até Aferição"].dropna().mean()
+        pneu_critico = df[df["Aferição - Sulco"] < 2]
+        perc_critico = len(pneu_critico) / len(df) * 100
 
         col5.metric("🟢 Média Sulco (mm)", f"{media_sulco:.2f}")
         col6.metric("🛣️ Média Km até Aferição", f"{media_km:,.0f} km")
@@ -78,7 +75,11 @@ if arquivo:
             "e o eixo Y mostra a profundidade do sulco. As cores representam a marca atual do pneu."
         )
 
-        if "Km Rodado até Aferição" in df_com_km.columns and "Aferição - Sulco" in df_com_km.columns:
+        # Filtrar apenas pneus com km rodado até aferição
+        df_com_km = df[df["Km Rodado até Aferição"].notna()]
+
+        if not df_com_km.empty:
+            # Gráfico
             fig_desgaste = px.scatter(
                 df_com_km,
                 x="Km Rodado até Aferição",
@@ -90,8 +91,36 @@ if arquivo:
             )
             st.plotly_chart(fig_desgaste, use_container_width=True)
 
-        # ----------------- TABELA DO GRÁFICO -----------------
-        st.subheader("📈 Tabela: Relação Km Rodado x Sulco")
+            # ----------------- TABELA DO GRÁFICO -----------------
+            st.subheader("📈 Tabela: Relação Km Rodado x Sulco")
+
+            # Formatar a coluna de aferição com 2 casas decimais
+            df_tabela = df_com_km.copy()
+            df_tabela["Aferição - Sulco"] = df_tabela["Aferição - Sulco"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
+
+            def colorir_sulco(val):
+                try:
+                    val_float = float(val)
+                    if val_float < 2:
+                        return "background-color: #FF6B6B; color: white"
+                    elif val_float < 4:
+                        return "background-color: #FFD93D; color: black"
+                    else:
+                        return "background-color: #6BCB77; color: white"
+                except:
+                    return ""
+
+            colunas_tabela = ["Referência", "Veículo - Placa", "Marca (Atual)", "Modelo (Atual)", "Vida", "Status", "Km Rodado até Aferição", "Aferição - Sulco"]
+            st.dataframe(
+                df_tabela[colunas_tabela].style.applymap(colorir_sulco, subset=["Aferição - Sulco"]),
+                use_container_width=True
+            )
+
+    # ----------------- TABELA COMPLETA -----------------
+    with aba3:
+        st.subheader("📑 Tabela Completa")
+        status_filter = st.multiselect("Filtrar por Status", options=df["Status"].unique(), default=df["Status"].unique())
+        df_filtrado = df[df["Status"].isin(status_filter)]
 
         def colorir_sulco(val):
             if pd.isna(val):
@@ -102,18 +131,6 @@ if arquivo:
                 return "background-color: #FFD93D; color: black"
             else:
                 return "background-color: #6BCB77; color: white"
-
-        colunas_tabela = ["Referência", "Veículo - Placa", "Marca (Atual)", "Modelo (Atual)", "Vida", "Status", "Km Rodado até Aferição", "Aferição - Sulco"]
-        st.dataframe(
-            df_com_km[colunas_tabela].style.applymap(colorir_sulco, subset=["Aferição - Sulco"]),
-            use_container_width=True
-        )
-
-    # ----------------- TABELA COMPLETA -----------------
-    with aba3:
-        st.subheader("📑 Tabela Completa")
-        status_filter = st.multiselect("Filtrar por Status", options=df_com_km["Status"].unique(), default=df_com_km["Status"].unique())
-        df_filtrado = df_com_km[df_com_km["Status"].isin(status_filter)]
 
         st.dataframe(
             df_filtrado.style.applymap(colorir_sulco, subset=["Aferição - Sulco"]),
