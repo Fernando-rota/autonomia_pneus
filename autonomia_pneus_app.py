@@ -15,10 +15,16 @@ if arquivo:
     # ----------------- TRATAMENTO DE DADOS -----------------
     # Extrair km da coluna Observação
     df["Observação - Km"] = pd.to_numeric(df["Observação"].astype(str).str.extract(r"(\d+)\s*km")[0], errors='coerce')
-    df["Km Rodado até Aferição"] = (df["Observação - Km"] - df["Hodômetro Inicial"]).fillna(0)
+    df["Km Rodado até Aferição"] = df["Observação - Km"] - df["Hodômetro Inicial"]
+    
+    # Substituir valores inválidos por 0
+    df["Km Rodado até Aferição"] = df["Km Rodado até Aferição"].fillna(0)
+    df.loc[df["Km Rodado até Aferição"] < 0, "Km Rodado até Aferição"] = 0
+
+    # Coluna Tipo Pneu
     df["Tipo Pneu"] = df["Vida"].fillna("Novo")
 
-    # Criar coluna de alerta visual
+    # Coluna de alerta visual
     df["Alerta Sulco"] = pd.cut(df["Aferição - Sulco"],
                                 bins=[-1, 2, 4, 100],
                                 labels=["🔴 Crítico", "🟡 Atenção", "🟢 OK"])
@@ -54,19 +60,21 @@ if arquivo:
     # ----------------- GRÁFICOS -----------------
     with aba2:
         st.subheader("📈 Gráficos Interativos")
-        st.markdown("**Gráfico 1: Relação Km Rodado x Sulco**  \nMostra o desgaste do pneu em função da quilometragem. Cada ponto representa um pneu, colorido pelo tipo de pneu.")
 
+        # Gráfico 1: Relação Km Rodado x Sulco (igual ao script antigo)
+        st.markdown("**Gráfico 1: Relação Km Rodado x Sulco**  \nCada ponto representa um pneu. Valores agora tratados para refletir exatamente o seu script antigo.")
         fig1 = px.scatter(
             df,
             x="Km Rodado até Aferição",
             y="Aferição - Sulco",
-            color="Tipo Pneu",
-            hover_data=["Veículo - Placa", "Modelo (Atual)", "Marca (Atual)", "Status"],
+            color="Marca (Atual)",  # Mantendo agrupamento igual ao script antigo
+            hover_data=["Veículo - Placa", "Modelo (Atual)", "Status"],
             color_discrete_sequence=px.colors.qualitative.Set2,
             height=500
         )
         st.plotly_chart(fig1, use_container_width=True)
 
+        # Gráfico 2: Distribuição do Sulco por Marca
         st.markdown("**Gráfico 2: Distribuição do Sulco por Marca**  \nPermite identificar marcas com maior durabilidade média.")
         fig2 = px.box(
             df,
@@ -110,8 +118,6 @@ if arquivo:
         resumo["Km_Mínimo"] = resumo["Km_Mínimo"].apply(lambda x: f"{x:,.0f} km")
         resumo["Km_Máximo"] = resumo["Km_Máximo"].apply(lambda x: f"{x:,.0f} km")
 
-        st.dataframe(resumo, use_container_width=True)
-
         fig3 = px.bar(
             df.groupby("Tipo Pneu")["Km Rodado até Aferição"].mean().reset_index(),
             x="Tipo Pneu",
@@ -123,3 +129,4 @@ if arquivo:
         )
         fig3.update_traces(texttemplate='%{y:.0f} km', textposition='outside')
         st.plotly_chart(fig3, use_container_width=True)
+        st.dataframe(resumo, use_container_width=True)
