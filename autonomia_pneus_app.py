@@ -11,7 +11,7 @@ arquivo = st.file_uploader("Carregue a planilha de pneus", type=["xlsx", "xls"])
 if arquivo:
     df = pd.read_excel(arquivo, engine="openpyxl")
 
-    # ----------------- Extrair Km da observação -----------------
+    # ----------------- Extrair Km da Observação -----------------
     def extrair_km_observacao(texto):
         if pd.isna(texto):
             return None
@@ -23,6 +23,13 @@ if arquivo:
     df["Observação - Km"] = df["Observação"].apply(extrair_km_observacao)
     df["Km Rodado até Aferição"] = df["Observação - Km"] - df["Hodômetro Inicial"]
 
+    # ----------------- Criar coluna Tipo Pneu -----------------
+    # Se houver coluna que indique se é ressoldado, ajuste aqui
+    # Caso não tenha, define todos como Novo
+    if "Tipo Pneu" not in df.columns:
+        df["Tipo Pneu"] = "Novo"
+
+    # ----------------- Criação de Abas -----------------
     aba1, aba2, aba3 = st.tabs(["📌 Indicadores", "📈 Gráficos", "📑 Tabela Completa"])
 
     # ----------------- INDICADORES -----------------
@@ -83,7 +90,6 @@ if arquivo:
     with aba2:
         st.subheader("📈 Gráficos Interativos")
         if "Km Rodado até Aferição" in df.columns and "Aferição - Sulco" in df.columns:
-            # Scatter Km x Sulco
             fig_desgaste = px.scatter(
                 df,
                 x="Km Rodado até Aferição",
@@ -102,7 +108,6 @@ if arquivo:
             )
             st.plotly_chart(fig_desgaste, use_container_width=True)
 
-            # Boxplot Sulco por Marca
             fig_box = px.box(
                 df,
                 x="Marca (Atual)",
