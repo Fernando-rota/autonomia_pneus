@@ -38,11 +38,23 @@ if arquivo:
     df = pd.concat([df, df_extra], ignore_index=True)
     df["Km Rodado até Aferição"] = df["Observação - Km"] - df["Hodômetro Inicial"]
 
-    aba1, aba2, aba3 = st.tabs(["📌 Indicadores", "📈 Gráficos", "📑 Tabela Completa"])
+    # ----------------- CRIAR ABAS -----------------
+    aba1, aba2, aba3, aba4 = st.tabs(["📌 Indicadores", "📈 Gráficos", "📑 Tabela Completa", "📏 Medidas de Sulco"])
 
     # ----------------- INDICADORES -----------------
     with aba1:
         st.subheader("📌 Indicadores Gerais")
+
+        # Texto introdutório
+        st.markdown(
+            """
+            Este painel de BI apresenta a **gestão de pneus das 3 unidades**.  
+            Os indicadores refletem os dados cadastrados no sistema a partir de **maio/2025**.  
+
+            O objetivo deste BI é fornecer uma visão geral do estoque, sucata, pneus em uso nos caminhões e alertas de pneus críticos.  
+            Ele permite monitorar a **vida útil dos pneus**, identificar pneus próximos do limite de segurança e otimizar o gerenciamento da frota.
+            """
+        )
 
         total_pneus = df["Referência"].nunique()
         status_counts = df["Status"].value_counts()
@@ -69,14 +81,13 @@ if arquivo:
     # ----------------- GRÁFICO -----------------
     with aba2:
         st.subheader("📈 Relação Km Rodado x Sulco")
-
         st.markdown(
             "Cada ponto representa um pneu. O eixo X mostra a quilometragem rodada até a aferição, "
             "e o eixo Y mostra a profundidade do sulco. Pneus críticos (<2mm) estão em vermelho."
         )
 
-        # Filtrar apenas pneus com km rodado até aferição
-        df_com_km = df[df["Km Rodado até Aferição"].notna()]
+        # Filtrar apenas pneus com km rodado > 0
+        df_com_km = df[df["Km Rodado até Aferição"].notna() & (df["Km Rodado até Aferição"] > 0)]
 
         if not df_com_km.empty:
             # Criar coluna para cor, destacando críticos
@@ -109,9 +120,9 @@ if arquivo:
             # ----------------- TABELA DO GRÁFICO -----------------
             st.subheader("📈 Tabela: Relação Km Rodado x Sulco")
 
-            # Formatar a coluna de aferição com 2 casas decimais
             df_tabela = df_com_km.copy()
             df_tabela["Aferição - Sulco"] = df_tabela["Aferição - Sulco"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
+            df_tabela["Km Rodado até Aferição"] = df_tabela["Km Rodado até Aferição"].map(lambda x: f"{int(x):,} km")
 
             def colorir_sulco(val):
                 try:
@@ -149,5 +160,18 @@ if arquivo:
 
         st.dataframe(
             df_filtrado.style.applymap(colorir_sulco, subset=["Aferição - Sulco"]),
+            use_container_width=True
+        )
+
+    # ----------------- ABA DE MEDIDAS -----------------
+    with aba4:
+        st.subheader("📏 Medidas de Sulco")
+        # Exibir apenas pneus com valores de sulco
+        df_sulco = df[df["Aferição - Sulco"].notna()]
+        df_sulco["Aferição - Sulco"] = df_sulco["Aferição - Sulco"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
+
+        colunas_sulco = ["Referência", "Veículo - Placa", "Marca (Atual)", "Modelo (Atual)", "Vida", "Status", "Aferição - Sulco"]
+        st.dataframe(
+            df_sulco[colunas_sulco].style.applymap(colorir_sulco, subset=["Aferição - Sulco"]),
             use_container_width=True
         )
