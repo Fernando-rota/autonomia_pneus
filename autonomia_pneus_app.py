@@ -121,7 +121,36 @@ if arquivo:
 
         st.plotly_chart(fig_violin, use_container_width=True)
 
-    # ----------------- TABELA -----------------
+        # ----------------- TABELA RESUMO POR MARCA E VIDA -----------------
+        st.subheader("📋 Resumo por Marca e Vida do Pneu")
+
+        # Agrupar dados por marca e vida
+        df_resumo = df.groupby(["Marca (Atual)", "Vida"]).agg(
+            Total_Pneus=("Referência", "count"),
+            Media_Sulco=("Aferição - Sulco", "mean"),
+            Sulco_Min=("Aferição - Sulco", "min"),
+            Sulco_Max=("Aferição - Sulco", "max"),
+            Criticos_2mm=("Aferição - Sulco", lambda x: (x < 2).sum())
+        ).reset_index()
+
+        # Formatar média de sulco
+        df_resumo["Media_Sulco"] = df_resumo["Media_Sulco"].round(2)
+
+        # Colorir sulcos críticos
+        def colorir_resumo(val):
+            if val < 2:
+                return "background-color: #FF6B6B; color: white"
+            elif val < 4:
+                return "background-color: #FFD93D; color: black"
+            else:
+                return "background-color: #6BCB77; color: white"
+
+        st.dataframe(
+            df_resumo.style.applymap(colorir_resumo, subset=["Media_Sulco", "Sulco_Min", "Sulco_Max"]),
+            use_container_width=True
+        )
+
+    # ----------------- TABELA COMPLETA -----------------
     with aba3:
         st.subheader("📑 Tabela Completa")
         status_filter = st.multiselect("Filtrar por Status", options=df["Status"].unique(), default=df["Status"].unique())
