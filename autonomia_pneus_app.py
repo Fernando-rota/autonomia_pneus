@@ -35,9 +35,16 @@ if arquivo:
 
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Total de Pneus", total_pneus)
+        st.caption("Quantidade total de pneus cadastrados na planilha.")
+
         col2.metric("Estoque", estoque)
+        st.caption("Pneus disponíveis em estoque prontos para uso.")
+
         col3.metric("Sucata", sucata)
+        st.caption("Pneus já descartados ou que não podem ser reutilizados.")
+
         col4.metric("Caminhão", caminhao)
+        st.caption("Pneus atualmente em uso nos caminhões da frota.")
 
         col5, col6, col7 = st.columns(3)
         media_sulco = df["Aferição - Sulco"].dropna().mean()
@@ -46,14 +53,18 @@ if arquivo:
         perc_critico = len(pneu_critico) / len(df) * 100
 
         col5.metric("Média Sulco (mm)", f"{media_sulco:.2f}")
+        st.caption("Profundidade média do sulco dos pneus aferidos (mm).")
+
         col6.metric("Média Km até Aferição", f"{media_km:,.0f} km")
+        st.caption("Quilometragem média rodada pelos pneus até a última aferição.")
+
         col7.metric("Pneus Críticos (<2mm)", len(pneu_critico), f"{perc_critico:.1f}%")
+        st.caption("Pneus com sulco menor que 2mm, considerados críticos para uso.")
 
     # ----------------- GRÁFICOS -----------------
     with aba2:
         st.subheader("📈 Gráficos Interativos")
 
-        # Scatter Km x Sulco
         if "Km Rodado até Aferição" in df.columns and "Aferição - Sulco" in df.columns:
             fig_desgaste = px.scatter(
                 df,
@@ -64,18 +75,32 @@ if arquivo:
                 hover_data=["Veículo - Placa", "Modelo (Atual)", "Status"],
                 color_discrete_sequence=px.colors.qualitative.Set2
             )
+            fig_desgaste.update_layout(
+                title_font_size=22,
+                xaxis_title_font_size=18,
+                yaxis_title_font_size=18,
+                legend_title_font_size=16,
+                font=dict(size=16)
+            )
             st.plotly_chart(fig_desgaste, use_container_width=True)
 
-        # Boxplot de sulco por marca
-        fig_box = px.box(
-            df,
-            x="Marca (Atual)",
-            y="Aferição - Sulco",
-            color="Marca (Atual)",
-            title="Distribuição do Sulco por Marca",
-            color_discrete_sequence=px.colors.qualitative.Pastel
-        )
-        st.plotly_chart(fig_box, use_container_width=True)
+            # Boxplot de sulco por marca
+            fig_box = px.box(
+                df,
+                x="Marca (Atual)",
+                y="Aferição - Sulco",
+                color="Marca (Atual)",
+                title="Distribuição do Sulco por Marca",
+                color_discrete_sequence=px.colors.qualitative.Pastel
+            )
+            fig_box.update_layout(
+                title_font_size=22,
+                xaxis_title_font_size=18,
+                yaxis_title_font_size=18,
+                legend_title_font_size=16,
+                font=dict(size=16)
+            )
+            st.plotly_chart(fig_box, use_container_width=True)
 
     # ----------------- TABELA -----------------
     with aba3:
