@@ -131,9 +131,10 @@ if arquivo:
             st.subheader("📈 Tabela: Relação Km Rodado x Sulco")
             df_tabela = df_com_km.copy()
             
-            # Ordenar tabela em ordem crescente de Km Rodado
+            # Ordenar antes de formatar
             df_tabela = df_tabela.sort_values(by="Km Rodado até Aferição", ascending=True)
             
+            # Formatar colunas para exibição
             df_tabela["Aferição - Sulco"] = df_tabela["Aferição - Sulco"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
             df_tabela["Km Rodado até Aferição"] = df_tabela["Km Rodado até Aferição"].map(lambda x: f"{int(x):,} km")
 
