@@ -72,21 +72,36 @@ if arquivo:
 
         st.markdown(
             "Cada ponto representa um pneu. O eixo X mostra a quilometragem rodada até a aferição, "
-            "e o eixo Y mostra a profundidade do sulco. As cores representam a marca atual do pneu."
+            "e o eixo Y mostra a profundidade do sulco. Pneus críticos (<2mm) estão em vermelho."
         )
 
         # Filtrar apenas pneus com km rodado até aferição
         df_com_km = df[df["Km Rodado até Aferição"].notna()]
 
         if not df_com_km.empty:
+            # Criar coluna para cor, destacando críticos
+            def cor_pneu(row):
+                if pd.notna(row["Aferição - Sulco"]) and row["Aferição - Sulco"] < 2:
+                    return "Crítico"
+                else:
+                    return row["Marca (Atual)"]
+
+            df_com_km["Cor_Gráfico"] = df_com_km.apply(cor_pneu, axis=1)
+
+            # Definir cores: vermelho para críticos, cores Set2 para as marcas
+            cores_set2 = px.colors.qualitative.Set2
+            marcas = df_com_km["Marca (Atual)"].unique().tolist()
+            color_map = {marca: cores_set2[i % len(cores_set2)] for i, marca in enumerate(marcas)}
+            color_map["Crítico"] = "#FF0000"  # vermelho para críticos
+
             # Gráfico
             fig_desgaste = px.scatter(
                 df_com_km,
                 x="Km Rodado até Aferição",
                 y="Aferição - Sulco",
-                color="Marca (Atual)",
+                color="Cor_Gráfico",
                 hover_data=["Veículo - Placa", "Modelo (Atual)", "Status", "Vida"],
-                color_discrete_sequence=px.colors.qualitative.Set2,
+                color_discrete_map=color_map,
                 height=500
             )
             st.plotly_chart(fig_desgaste, use_container_width=True)
