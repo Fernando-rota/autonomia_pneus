@@ -23,13 +23,28 @@ if arquivo:
     df["Observação - Km"] = df["Observação"].apply(extrair_km_observacao)
     df["Km Rodado até Aferição"] = df["Observação - Km"] - df["Hodômetro Inicial"]
 
+    # ----------------- AJUSTE DE ESTOQUE -----------------
+    # Adicionar 6 pneus extras em Sucata
+    df_extra = pd.DataFrame({
+        "Referência": [f"Extra{i}" for i in range(1, 7)],
+        "Status": ["Sucata"]*6,
+        "Veículo - Placa": [None]*6,
+        "Modelo (Atual)": [None]*6,
+        "Marca (Atual)": [None]*6,
+        "Aferição - Sulco": [0]*6,
+        "Hodômetro Inicial": [0]*6,
+        "Observação": [None]*6,
+        "Vida": ["Ressolado"]*6
+    })
+    df = pd.concat([df, df_extra], ignore_index=True)
+    df["Km Rodado até Aferição"] = df["Observação - Km"] - df["Hodômetro Inicial"]
+
     aba1, aba2, aba3 = st.tabs(["📌 Indicadores", "📈 Gráficos", "📑 Tabela Completa"])
 
     # ----------------- INDICADORES -----------------
     with aba1:
         st.subheader("📌 Indicadores Gerais")
 
-        # KPIs principais
         total_pneus = df["Referência"].nunique()
         status_counts = df["Status"].value_counts()
         estoque = status_counts.get("Estoque", 0)
@@ -42,7 +57,6 @@ if arquivo:
         col3.metric("♻️ Sucata", sucata)
         col4.metric("🚚 Caminhão", caminhao)
 
-        # KPIs secundários
         col5, col6, col7 = st.columns(3)
         media_sulco = df["Aferição - Sulco"].dropna().mean()
         media_km = df["Km Rodado até Aferição"].dropna().mean()
@@ -53,28 +67,23 @@ if arquivo:
         col6.metric("🛣️ Média Km até Aferição", f"{media_km:,.0f} km")
         col7.metric("⚠️ Pneus Críticos (<2mm)", len(pneu_critico), f"{perc_critico:.1f}%")
 
-        # Destaque visual para pneus críticos
-        st.markdown("### 🔴 Pneus Críticos")
-        if not pneu_critico.empty:
-            st.dataframe(
-                pneu_critico[["Veículo - Placa", "Modelo (Atual)", "Marca (Atual)", "Aferição - Sulco", "Km Rodado até Aferição"]],
-                use_container_width=True
-            )
-        else:
-            st.write("Nenhum pneu crítico encontrado.")
-
     # ----------------- GRÁFICOS -----------------
     with aba2:
         st.subheader("📈 Gráficos Interativos")
 
         # Scatter Km x Sulco
+        st.markdown(
+            "**Gráfico 1: Relação Km Rodado x Sulco**  \n"
+            "Cada ponto representa um pneu. O eixo X mostra a quilometragem rodada até a aferição, "
+            "e o eixo Y mostra a profundidade do sulco. "
+            "As cores representam a marca atual do pneu."
+        )
         if "Km Rodado até Aferição" in df.columns and "Aferição - Sulco" in df.columns:
             fig_desgaste = px.scatter(
                 df,
                 x="Km Rodado até Aferição",
                 y="Aferição - Sulco",
                 color="Marca (Atual)",
-                title="Relação entre Km Rodado e Sulco",
                 hover_data=["Veículo - Placa", "Modelo (Atual)", "Status"],
                 color_discrete_sequence=px.colors.qualitative.Set2,
                 height=500
@@ -82,12 +91,16 @@ if arquivo:
             st.plotly_chart(fig_desgaste, use_container_width=True)
 
         # Boxplot de sulco por marca
+        st.markdown(
+            "**Gráfico 2: Distribuição do Sulco por Marca**  \n"
+            "Este gráfico mostra a distribuição da profundidade do sulco por marca de pneu. "
+            "Permite identificar quais marcas estão mais desgastadas ou mais conservadas."
+        )
         fig_box = px.box(
             df,
             x="Marca (Atual)",
             y="Aferição - Sulco",
             color="Marca (Atual)",
-            title="Distribuição do Sulco por Marca",
             color_discrete_sequence=px.colors.qualitative.Pastel,
             height=500
         )
@@ -99,7 +112,6 @@ if arquivo:
         status_filter = st.multiselect("Filtrar por Status", options=df["Status"].unique(), default=df["Status"].unique())
         df_filtrado = df[df["Status"].isin(status_filter)]
 
-        # Coloração condicional para sulco crítico
         def colorir_sulco(val):
             if pd.isna(val):
                 return ""
