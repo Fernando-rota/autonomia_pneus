@@ -90,21 +90,36 @@ if arquivo:
             )
             st.plotly_chart(fig_desgaste, use_container_width=True)
 
-        # Boxplot de sulco por marca
+        # ----------------- Gráfico 2: Violin Plot -----------------
         st.markdown(
-            "**Gráfico 2: Distribuição do Sulco por Marca**  \n"
+            "**Gráfico 2: Distribuição do Sulco por Marca (Violin Plot)**  \n"
             "Este gráfico mostra a distribuição da profundidade do sulco por marca de pneu. "
-            "Permite identificar quais marcas estão mais desgastadas ou mais conservadas."
+            "O formato do 'violino' indica a densidade dos pneus em cada faixa de sulco. "
+            "Os pontos mostram pneus individuais, permitindo identificar pneus críticos (<2mm)."
         )
-        fig_box = px.box(
+
+        fig_violin = px.violin(
             df,
             x="Marca (Atual)",
             y="Aferição - Sulco",
             color="Marca (Atual)",
-            color_discrete_sequence=px.colors.qualitative.Pastel,
-            height=500
+            box=True,       # mostra o boxplot dentro do violino
+            points="all",   # mostra todos os pontos individuais
+            height=500,
+            color_discrete_sequence=px.colors.qualitative.Pastel
         )
-        st.plotly_chart(fig_box, use_container_width=True)
+
+        # Destacar visualmente pneus críticos (<2mm)
+        df_critico = df[df["Aferição - Sulco"] < 2]
+        fig_violin.add_scatter(
+            x=df_critico["Marca (Atual)"],
+            y=df_critico["Aferição - Sulco"],
+            mode="markers",
+            marker=dict(color="red", size=8, symbol="x"),
+            name="Críticos <2mm"
+        )
+
+        st.plotly_chart(fig_violin, use_container_width=True)
 
     # ----------------- TABELA -----------------
     with aba3:
