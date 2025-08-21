@@ -142,7 +142,7 @@ if arquivo:
     # ----------------- ABA DE MEDIDAS DE SULCO -----------------
     with aba4:
         st.subheader("📏 Medidas de Sulco")
-        df_sulco = df[(df["Aferição - Sulco"].notna()) & (~df["Referência"].str.contains("Extra"))].copy()
+        df_sulco = df[(df["Aferição - Sulco"].notna()) & (~df["Referência"].astype(str).str.contains("Extra"))].copy()
         df_sulco = df_sulco.sort_values(by="Aferição - Sulco", ascending=True)
         df_sulco["Aferição - Sulco"] = df_sulco["Aferição - Sulco"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
         colunas_sulco = ["Referência", "Veículo - Placa", "Marca (Atual)", "Modelo (Atual)", "Vida", "Status", "Aferição - Sulco"]
@@ -154,8 +154,12 @@ if arquivo:
     # ----------------- ABA DE TABELA COMPLETA -----------------
     with aba3:
         st.subheader("📑 Tabela Completa")
-        df_filtrado = df[~df["Referência"].str.contains("Extra")].copy()
-        status_filter = st.multiselect("Filtrar por Status", options=df_filtrado["Status"].unique(), default=df_filtrado["Status"].unique())
+        df_filtrado = df[~df["Referência"].astype(str).str.contains("Extra")].copy()
+        status_filter = st.multiselect(
+            "Filtrar por Status",
+            options=df_filtrado["Status"].unique(),
+            default=df_filtrado["Status"].unique()
+        )
         df_filtrado = df_filtrado[df_filtrado["Status"].isin(status_filter)].copy()
         st.dataframe(
             df_filtrado.style.applymap(colorir_sulco, subset=["Aferição - Sulco"]),
