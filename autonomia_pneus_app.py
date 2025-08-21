@@ -67,64 +67,30 @@ if arquivo:
         col6.metric("🛣️ Média Km até Aferição", f"{media_km:,.0f} km")
         col7.metric("⚠️ Pneus Críticos (<2mm)", len(pneu_critico), f"{perc_critico:.1f}%")
 
-    # ----------------- GRÁFICOS -----------------
+    # ----------------- GRÁFICO -----------------
     with aba2:
-        st.subheader("📈 Gráficos Interativos")
+        st.subheader("📈 Relação Km Rodado x Sulco")
 
-        # Scatter Km x Sulco
         st.markdown(
-            "**Gráfico 1: Relação Km Rodado x Sulco**  \n"
             "Cada ponto representa um pneu. O eixo X mostra a quilometragem rodada até a aferição, "
-            "e o eixo Y mostra a profundidade do sulco. "
-            "As cores representam a marca atual do pneu."
+            "e o eixo Y mostra a profundidade do sulco. As cores representam a marca atual do pneu."
         )
+
         if "Km Rodado até Aferição" in df.columns and "Aferição - Sulco" in df.columns:
             fig_desgaste = px.scatter(
                 df,
                 x="Km Rodado até Aferição",
                 y="Aferição - Sulco",
                 color="Marca (Atual)",
-                hover_data=["Veículo - Placa", "Modelo (Atual)", "Status"],
+                hover_data=["Veículo - Placa", "Modelo (Atual)", "Status", "Vida"],
                 color_discrete_sequence=px.colors.qualitative.Set2,
                 height=500
             )
             st.plotly_chart(fig_desgaste, use_container_width=True)
 
-        # ----------------- Gráfico 2: Violin Plot -----------------
-        st.markdown(
-            "**Gráfico 2: Distribuição do Sulco por Marca (Violin Plot)**  \n"
-            "Este gráfico mostra a distribuição da profundidade do sulco por marca de pneu. "
-            "O formato do 'violino' indica a densidade dos pneus em cada faixa de sulco. "
-            "Os pontos mostram pneus individuais, permitindo identificar pneus críticos (<2mm)."
-        )
-
-        fig_violin = px.violin(
-            df,
-            x="Marca (Atual)",
-            y="Aferição - Sulco",
-            color="Marca (Atual)",
-            box=True,       # mostra o boxplot dentro do violino
-            points="all",   # mostra todos os pontos individuais
-            height=500,
-            color_discrete_sequence=px.colors.qualitative.Pastel
-        )
-
-        # Destacar visualmente pneus críticos (<2mm)
-        df_critico = df[df["Aferição - Sulco"] < 2]
-        fig_violin.add_scatter(
-            x=df_critico["Marca (Atual)"],
-            y=df_critico["Aferição - Sulco"],
-            mode="markers",
-            marker=dict(color="red", size=8, symbol="x"),
-            name="Críticos <2mm"
-        )
-
-        st.plotly_chart(fig_violin, use_container_width=True)
-
         # ----------------- TABELA RESUMO POR MARCA E VIDA -----------------
         st.subheader("📋 Resumo por Marca e Vida do Pneu")
 
-        # Agrupar dados por marca e vida
         df_resumo = df.groupby(["Marca (Atual)", "Vida"]).agg(
             Total_Pneus=("Referência", "count"),
             Media_Sulco=("Aferição - Sulco", "mean"),
@@ -133,10 +99,8 @@ if arquivo:
             Criticos_2mm=("Aferição - Sulco", lambda x: (x < 2).sum())
         ).reset_index()
 
-        # Formatar média de sulco
         df_resumo["Media_Sulco"] = df_resumo["Media_Sulco"].round(2)
 
-        # Colorir sulcos críticos
         def colorir_resumo(val):
             if val < 2:
                 return "background-color: #FF6B6B; color: white"
