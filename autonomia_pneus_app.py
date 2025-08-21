@@ -45,7 +45,6 @@ if arquivo:
     with aba1:
         st.subheader("📌 Indicadores Gerais")
 
-        # Texto introdutório
         st.markdown(
             """
             Este painel de BI apresenta a **gestão de pneus das 3 unidades**.  
@@ -87,7 +86,7 @@ if arquivo:
         )
 
         # Filtrar apenas pneus com km rodado > 0
-        df_com_km = df[df["Km Rodado até Aferição"].notna() & (df["Km Rodado até Aferição"] > 0)]
+        df_com_km = df[df["Km Rodado até Aferição"].notna() & (df["Km Rodado até Aferição"] > 0)].copy()
 
         if not df_com_km.empty:
             # Criar coluna para cor, destacando críticos
@@ -101,7 +100,7 @@ if arquivo:
 
             # Definir cores: vermelho para críticos, cores Set2 para as marcas
             cores_set2 = px.colors.qualitative.Set2
-            marcas = df_com_km["Marca (Atual)"].unique().tolist()
+            marcas = df_com_km["Marca (Atual)"].dropna().unique().tolist()
             color_map = {marca: cores_set2[i % len(cores_set2)] for i, marca in enumerate(marcas)}
             color_map["Crítico"] = "#FF0000"  # vermelho para críticos
 
@@ -146,17 +145,19 @@ if arquivo:
     with aba3:
         st.subheader("📑 Tabela Completa")
         status_filter = st.multiselect("Filtrar por Status", options=df["Status"].unique(), default=df["Status"].unique())
-        df_filtrado = df[df["Status"].isin(status_filter)]
+        df_filtrado = df[df["Status"].isin(status_filter)].copy()
 
         def colorir_sulco(val):
-            if pd.isna(val):
+            try:
+                val_float = float(val)
+                if val_float < 2:
+                    return "background-color: #FF6B6B; color: white"
+                elif val_float < 4:
+                    return "background-color: #FFD93D; color: black"
+                else:
+                    return "background-color: #6BCB77; color: white"
+            except:
                 return ""
-            elif val < 2:
-                return "background-color: #FF6B6B; color: white"
-            elif val < 4:
-                return "background-color: #FFD93D; color: black"
-            else:
-                return "background-color: #6BCB77; color: white"
 
         st.dataframe(
             df_filtrado.style.applymap(colorir_sulco, subset=["Aferição - Sulco"]),
@@ -167,7 +168,7 @@ if arquivo:
     with aba4:
         st.subheader("📏 Medidas de Sulco")
         # Exibir apenas pneus com valores de sulco
-        df_sulco = df[df["Aferição - Sulco"].notna()]
+        df_sulco = df[df["Aferição - Sulco"].notna()].copy()
         df_sulco["Aferição - Sulco"] = df_sulco["Aferição - Sulco"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
 
         colunas_sulco = ["Referência", "Veículo - Placa", "Marca (Atual)", "Modelo (Atual)", "Vida", "Status", "Aferição - Sulco"]
