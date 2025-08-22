@@ -26,10 +26,18 @@ if arquivo:
     # Dicionário modelo -> sulco novo
     sulco_legenda = df_legenda.set_index("Modelo (Atual)")["Sulco"].to_dict()
 
-    # Adicionar colunas
+    # Adicionar coluna Sulco Novo
     df.insert(df.columns.get_loc("Vida") + 1, "Sulco Novo", df["Modelo (Atual)"].map(sulco_legenda))
+
+    # Criar coluna Sulco Consumido
     df["Sulco Consumido"] = df["Sulco Novo"] - df["Aferição - Sulco"]
-    df["Desgaste por Km"] = df["Sulco Consumido"] / df["Km Rodado até Aferição"]
+
+    # Corrigido: usar "Vida do Pneu - Km. Rodado" para cálculo
+    df["Desgaste por Km"] = df["Sulco Consumido"] / df["Vida do Pneu - Km. Rodado"]
+
+    # Preencher NaN ou zeros caso não haja rodagem
+    df["Desgaste por Km"] = df["Desgaste por Km"].fillna(0)
+    df["Sulco Consumido"] = df["Sulco Consumido"].fillna(0)
 
     # ----------------- CLASSIFICAÇÃO POR TIPO DE VEÍCULO -----------------
     def classificar_veiculo(desc):
@@ -46,8 +54,8 @@ if arquivo:
     df["Tipo de Veículo"] = df["Veículo - Descrição"].apply(classificar_veiculo)
 
     # ----------------- RODAGEM POR TIPO -----------------
-    rodagem_tipo = df.groupby("Tipo de Veículo")["Km Rodado até Aferição"].mean().reset_index()
-    rodagem_tipo.rename(columns={"Km Rodado até Aferição": "Rodagem Média"}, inplace=True)
+    rodagem_tipo = df.groupby("Tipo de Veículo")["Vida do Pneu - Km. Rodado"].mean().reset_index()
+    rodagem_tipo.rename(columns={"Vida do Pneu - Km. Rodado": "Rodagem Média"}, inplace=True)
 
     # ----------------- LAYOUT EM ABAS -----------------
     aba1, aba2, aba3, aba4, aba5 = st.tabs([
@@ -66,7 +74,7 @@ if arquivo:
         st.subheader("📊 Relação Km Rodado x Sulco")
         fig = px.scatter(
             df,
-            x="Km Rodado até Aferição",
+            x="Vida do Pneu - Km. Rodado",
             y="Aferição - Sulco",
             color="Modelo (Atual)",
             hover_data=["Veículo - Placa", "Sigla da Posição", "Sulco Novo"],
@@ -89,7 +97,7 @@ if arquivo:
         st.subheader("📈 Desgaste por Km")
         fig = px.scatter(
             df,
-            x="Km Rodado até Aferição",
+            x="Vida do Pneu - Km. Rodado",
             y="Desgaste por Km",
             color="Modelo (Atual)",
             hover_data=["Veículo - Placa", "Sigla da Posição", "Sulco Novo"],
