@@ -10,7 +10,7 @@ st.title("📊 Gestão de Pneus")
 arquivo = st.file_uploader("Carregue a planilha de pneus", type=["xlsx", "xls"])
 
 if arquivo:
-    # Ver abas do Excel
+    # Carregar abas do Excel
     xls = pd.ExcelFile(arquivo, engine="openpyxl")
     st.write("Abas do Excel:", xls.sheet_names)
 
@@ -25,7 +25,7 @@ if arquivo:
     df_sulco = pd.read_excel(arquivo, sheet_name=aba_sulco, engine="openpyxl")
     df_sulco.columns = df_sulco.columns.str.strip()
 
-    # Criar dicionário Modelo -> Sulco Novo
+    # ----------------- Mapear Sulco Novo -----------------
     sulco_novo_dict = df_sulco.set_index("Modelo (Atual)")["Sulco"].to_dict()
     df["Sulco Novo"] = df["Modelo (Atual)"].map(sulco_novo_dict)
 
@@ -56,17 +56,17 @@ if arquivo:
 
     df["Sulco Consumido"] = df.apply(
         lambda x: x["Sulco Novo"] - x["Aferição - Sulco"]
-        if pd.notna(x["Sulco Novo"]) and pd.notna(x["Aferição - Sulco"]) else 0,
+        if pd.notna(x["Sulco Novo"]) and pd.notna(x["Aferição - Sulco"]) else None,
         axis=1
     )
 
     df["Desgaste por Km"] = df.apply(
         lambda x: x["Sulco Consumido"] / x["Km Rodado até Aferição"]
-        if pd.notna(x["Km Rodado até Aferição"]) and x["Km Rodado até Aferição"] > 0 else 0,
+        if pd.notna(x["Sulco Consumido"]) and pd.notna(x["Km Rodado até Aferição"]) and x["Km Rodado até Aferição"] > 0 else None,
         axis=1
     )
 
-    # ----------------- ABAS -----------------
+    # ----------------- CRIAR ABAS -----------------
     aba1, aba2, aba3, aba4 = st.tabs([
         "📌 Indicadores",
         "📈 Gráficos",
@@ -74,7 +74,7 @@ if arquivo:
         "📑 Tabela Completa"
     ])
 
-    # ----------------- INDICADORES -----------------
+    # ----------------- ABA DE INDICADORES -----------------
     with aba1:
         st.subheader("📌 Indicadores Gerais")
         total_pneus = df["Referência"].nunique()
@@ -98,7 +98,7 @@ if arquivo:
         col6.metric("🛣️ Média Km até Aferição", f"{media_km:,.0f} km")
         col7.metric("⚠️ Pneus Críticos (<2mm)", len(pneu_critico), f"{perc_critico:.1f}%")
 
-    # ----------------- GRÁFICOS -----------------
+    # ----------------- ABA DE GRÁFICOS -----------------
     with aba2:
         st.subheader("📈 Relação Km Rodado x Sulco")
         df_plot = df[df["Km Rodado até Aferição"].notna() & (df["Km Rodado até Aferição"] > 0)].copy()
@@ -122,20 +122,20 @@ if arquivo:
             )
             st.plotly_chart(fig, use_container_width=True)
 
-    # ----------------- MEDIDAS DE SULCO -----------------
+    # ----------------- ABA DE MEDIDAS DE SULCO -----------------
     with aba3:
         st.subheader("📏 Medidas de Sulco / Desgaste")
         df_sulco_tab = df[df["Aferição - Sulco"].notna()].copy()
         df_sulco_tab = df_sulco_tab.sort_values(by="Aferição - Sulco")
         df_sulco_tab["Aferição - Sulco"] = df_sulco_tab["Aferição - Sulco"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
-        df_sulco_tab["Sulco Consumido"] = df_sulco_tab["Sulco Consumido"].map(lambda x: f"{x:.2f}")
-        df_sulco_tab["Desgaste por Km"] = df_sulco_tab["Desgaste por Km"].map(lambda x: f"{x:.4f}")
+        df_sulco_tab["Sulco Consumido"] = df_sulco_tab["Sulco Consumido"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
+        df_sulco_tab["Desgaste por Km"] = df_sulco_tab["Desgaste por Km"].map(lambda x: f"{x:.4f}" if pd.notna(x) else "")
         st.dataframe(
             df_sulco_tab[["Referência","Veículo - Placa","Marca (Atual)","Modelo (Atual)","Aferição - Sulco","Sulco Consumido","Desgaste por Km"]],
             use_container_width=True
         )
 
-    # ----------------- TABELA COMPLETA -----------------
+    # ----------------- ABA DE TABELA COMPLETA -----------------
     with aba4:
         st.subheader("📑 Tabela Completa")
         st.dataframe(df, use_container_width=True)
