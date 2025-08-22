@@ -32,6 +32,20 @@ if arquivo:
         except:
             return ""
 
+    def classificar_veiculo(desc):
+        if pd.isna(desc):
+            return "Desconhecido"
+        desc = desc.lower()
+        if "saveiro" in desc:
+            return "Leve"
+        elif any(x in desc for x in ["renault", "iveco", "scudo"]):
+            return "Utilitário"
+        elif any(x in desc for x in ["3/4", "toco", "truck"]):
+            return "Caminhão"
+        elif any(x in desc for x in ["carreta", "cavalo"]):
+            return "Carreta"
+        return "Outros"
+
     # ----------------- PREPARAR DADOS -----------------
     df["Observação - Km"] = df["Observação"].apply(extrair_km_observacao)
     df["Km Rodado até Aferição"] = df["Observação - Km"] - df["Hodômetro Inicial"]
@@ -51,27 +65,27 @@ if arquivo:
     df = pd.concat([df, df_extra], ignore_index=True)
     df["Km Rodado até Aferição"] = df["Observação - Km"] - df["Hodômetro Inicial"]
 
+    # Sulco novo médio por modelo (apenas pneus sem uso e não extras)
+    df_novos = df[(df["Km Rodado até Aferição"].isna()) | (df["Km Rodado até Aferição"] <= 0)]
+    sulco_novo_por_modelo = df_novos.groupby("Modelo (Atual)")["Aferição - Sulco"].mean()
+
+    df["Sulco Novo"] = df["Modelo (Atual)"].map(sulco_novo_por_modelo)
+    df["Sulco Consumido"] = df["Sulco Novo"] - df["Aferição - Sulco"]
+    df["Desgaste por Km"] = df["Sulco Consumido"] / df["Km Rodado até Aferição"]
+    df["Categoria Veículo"] = df["Veículo - Descrição"].apply(classificar_veiculo)
+
     # ----------------- CRIAR ABAS -----------------
-    aba1, aba2, aba4, aba3 = st.tabs([
+    aba1, aba2, aba4, aba3, aba5 = st.tabs([
         "📌 Indicadores",
         "📈 Gráficos",
         "📏 Medidas de Sulco",
-        "📑 Tabela Completa"
+        "📑 Tabela Completa",
+        "ℹ️ Legenda"
     ])
 
     # ----------------- ABA DE INDICADORES -----------------
     with aba1:
         st.subheader("📌 Indicadores Gerais")
-        st.markdown(
-            """
-            Este painel de BI apresenta a **gestão de pneus das 3 unidades**.  
-            Os indicadores refletem os dados cadastrados no sistema a partir de **maio/2025**.  
-
-            O objetivo deste BI é fornecer uma visão geral do estoque, sucata, pneus em uso nos caminhões e alertas de pneus críticos.  
-            Ele permite monitorar a **vida útil dos pneus**, identificar pneus próximos do limite de segurança e otimizar o gerenciamento da frota.
-            """
-        )
-
         total_pneus = df["Referência"].nunique()
         status_counts = df["Status"].value_counts()
         estoque = status_counts.get("Estoque", 0)
@@ -97,11 +111,6 @@ if arquivo:
     # ----------------- ABA DE GRÁFICO -----------------
     with aba2:
         st.subheader("📈 Relação Km Rodado x Sulco")
-        st.markdown(
-            "Cada ponto representa um pneu. O eixo X mostra a quilometragem rodada até a aferição, "
-            "e o eixo Y mostra a profundidade do sulco. Pneus críticos (<2mm) estão em vermelho."
-        )
-
         df_com_km = df[df["Km Rodado até Aferição"].notna() & (df["Km Rodado até Aferição"] > 0)].copy()
         if not df_com_km.empty:
             def cor_pneu(row):
@@ -129,16 +138,12 @@ if arquivo:
             st.plotly_chart(fig_desgaste, use_container_width=True)
 
             st.subheader("📈 Tabela: Relação Km Rodado x Sulco")
-            df_tabela = df_com_km.copy()
-            
-            # Ordenar antes de formatar
-            df_tabela = df_tabela.sort_values(by="Km Rodado até Aferição", ascending=True)
-            
-            # Formatar colunas para exibição
+            df_tabela = df_com_km.copy().sort_values(by="Km Rodado até Aferição", ascending=True)
             df_tabela["Aferição - Sulco"] = df_tabela["Aferição - Sulco"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
             df_tabela["Km Rodado até Aferição"] = df_tabela["Km Rodado até Aferição"].map(lambda x: f"{int(x):,} km")
-
-            colunas_tabela = ["Referência", "Veículo - Placa", "Marca (Atual)", "Modelo (Atual)", "Vida", "Status", "Km Rodado até Aferição", "Aferição - Sulco"]
+            colunas_tabela = ["Referência", "Veículo - Placa", "Marca (Atual)", "Modelo (Atual)", "Vida", 
+                              "Sulco Novo", "Sulco Consumido", "Desgaste por Km", "Status", 
+                              "Km Rodado até Aferição", "Aferição - Sulco"]
             st.dataframe(
                 df_tabela[colunas_tabela].style.applymap(colorir_sulco, subset=["Aferição - Sulco"]),
                 use_container_width=True
@@ -150,7 +155,7 @@ if arquivo:
         df_sulco = df[(df["Aferição - Sulco"].notna()) & (~df["Referência"].astype(str).str.contains("Extra"))].copy()
         df_sulco = df_sulco.sort_values(by="Aferição - Sulco", ascending=True)
         df_sulco["Aferição - Sulco"] = df_sulco["Aferição - Sulco"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
-        colunas_sulco = ["Referência", "Veículo - Placa", "Marca (Atual)", "Modelo (Atual)", "Vida", "Status", "Aferição - Sulco"]
+        colunas_sulco = ["Referência", "Veículo - Placa", "Marca (Atual)", "Modelo (Atual)", "Vida", "Sulco Novo", "Sulco Consumido", "Desgaste por Km", "Status", "Aferição - Sulco"]
         st.dataframe(
             df_sulco[colunas_sulco].style.applymap(colorir_sulco, subset=["Aferição - Sulco"]),
             use_container_width=True
@@ -170,3 +175,17 @@ if arquivo:
             df_filtrado.style.applymap(colorir_sulco, subset=["Aferição - Sulco"]),
             use_container_width=True
         )
+
+    # ----------------- ABA DE LEGENDA -----------------
+    with aba5:
+        st.subheader("ℹ️ Legenda de Informações")
+        st.markdown("### Siglas de Posição")
+        if "Sigla da Posição" in df.columns:
+            st.write(df["Sigla da Posição"].dropna().unique().tolist())
+
+        st.markdown("### Sulco Novo por Modelo")
+        st.dataframe(sulco_novo_por_modelo.reset_index().rename(columns={"Aferição - Sulco": "Sulco Novo (médio)"}))
+
+        st.markdown("### Medida de Rodagem por Categoria de Veículo")
+        rodagem_categoria = df.groupby("Categoria Veículo")["Km Rodado até Aferição"].mean().dropna().reset_index()
+        st.dataframe(rodagem_categoria.rename(columns={"Km Rodado até Aferição": "Km Médio Rodado"}))
