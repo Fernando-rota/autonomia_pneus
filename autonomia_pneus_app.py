@@ -1,105 +1,157 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import re
 
 st.set_page_config(page_title="Gestão de Pneus", layout="wide")
 st.title("📊 Gestão de Pneus")
 
-# -------------------
-# Upload do arquivo Excel
-st.sidebar.subheader("Carregar arquivo Excel")
-arquivo = st.sidebar.file_uploader("Escolha o arquivo Excel", type="xlsx")
+arquivo = st.file_uploader("Carregue a planilha de pneus", type=["xlsx", "xls"])
 
-if arquivo is not None:
-    # -------------------
-    # Ler abas
-    try:
-        df_pneus = pd.read_excel(arquivo, sheet_name="pneus", engine="openpyxl")
-        df_pneus.columns = df_pneus.columns.str.strip()
+if arquivo:
+    # ----------------- LER PLANILHAS -----------------
+    df_pneus = pd.read_excel(arquivo, sheet_name="pneus", engine="openpyxl")
+    df_pneus.columns = df_pneus.columns.str.strip()
 
-        df_posicao = pd.read_excel(arquivo, sheet_name="posição", engine="openpyxl")
-        df_posicao.columns = df_posicao.columns.str.strip()
+    df_posicao = pd.read_excel(arquivo, sheet_name="posição", engine="openpyxl")
+    df_posicao.columns = df_posicao.columns.str.strip()
 
-        df_sulco = pd.read_excel(arquivo, sheet_name="sulco", engine="openpyxl")
-        df_sulco.columns = df_sulco.columns.str.strip()
-    except Exception as e:
-        st.error(f"Erro ao ler as planilhas: {e}")
-        st.stop()
+    df_sulco = pd.read_excel(arquivo, sheet_name="sulco", engine="openpyxl")
+    df_sulco.columns = df_sulco.columns.str.strip()
 
-    # -------------------
-    # Mapear posição (Sigla da Posição -> Posição)
+    # ----------------- FUNÇÕES -----------------
+    def extrair_km_observacao(texto):
+        """Extrai valor em km do campo Observação"""
+        if pd.isna(texto):
+            return None
+        match = re.search(r"(\d+)\s*km", str(texto))
+        if match:
+            return int(match.group(1))
+        return None
+
+    def colorir_sulco(val):
+        """Colore células de acordo com o sulco"""
+        try:
+            val_float = float(val)
+            if val_float < 2:
+                return "background-color: #FF6B6B; color: white"
+            elif val_float < 4:
+                return "background-color: #FFD93D; color: black"
+            else:
+                return "background-color: #6BCB77; color: white"
+        except:
+            return ""
+
+    # ----------------- PREPARAR DADOS -----------------
+    # Mapear posição (SIGLA -> POSIÇÃO)
     df_pneus = df_pneus.merge(
         df_posicao.rename(columns={"SIGLA": "Sigla da Posição", "POSIÇÃO": "Posição"}),
         on="Sigla da Posição",
         how="left"
     )
 
-    # Criar dicionário Modelo -> Sulco Novo
-    sulco_novo_dict = df_sulco.set_index("Modelo (Atual)")["Sulco"].to_dict()
+    # Calcular km rodado
+    df_pneus["Observação - Km"] = df_pneus["Observação"].apply(extrair_km_observacao)
+    df_pneus["Km Rodado até Aferição"] = df_pneus["Vida do Pneu - Km. Rodado"]
 
-    # Mapear Sulco Novo no dataframe principal
+    # Mapear sulco novo
+    sulco_novo_dict = df_sulco.set_index("Modelo (Atual)")["Sulco"].to_dict()
     df_pneus["Sulco Novo"] = df_pneus["Modelo (Atual)"].map(sulco_novo_dict)
 
-    # Calcular Sulco Consumido apenas quando houver dados
+    # Calcular sulco consumido
     df_pneus["Sulco Consumido"] = df_pneus.apply(
         lambda x: x["Sulco Novo"] - x["Aferição - Sulco"]
         if pd.notna(x["Sulco Novo"]) and pd.notna(x["Aferição - Sulco"]) else None,
         axis=1
     )
 
-    # Calcular Desgaste por Km (usando a coluna correta da aba pneus)
+    # Desgaste por km
     df_pneus["Desgaste por Km"] = df_pneus.apply(
-        lambda x: x["Sulco Consumido"] / x["Vida do Pneu - Km. Rodado"]
-        if pd.notna(x["Sulco Consumido"]) and pd.notna(x["Vida do Pneu - Km. Rodado"]) and x["Vida do Pneu - Km. Rodado"] > 0 else None,
+        lambda x: x["Sulco Consumido"] / x["Km Rodado até Aferição"]
+        if pd.notna(x["Sulco Consumido"]) and pd.notna(x["Km Rodado até Aferição"]) and x["Km Rodado até Aferição"] > 0 else None,
         axis=1
     )
 
-    # -------------------
-    # Filtros interativos
-    st.sidebar.subheader("Filtros")
-    modelos = st.sidebar.multiselect("Selecione Modelo", df_pneus["Modelo (Atual)"].unique(), default=df_pneus["Modelo (Atual)"].unique())
-    posicoes = st.sidebar.multiselect("Selecione Posição", df_pneus["Posição"].unique(), default=df_pneus["Posição"].unique())
+    # ----------------- CRIAR ABAS -----------------
+    aba1, aba2, aba3, aba4 = st.tabs([
+        "📌 Indicadores",
+        "📈 Gráficos",
+        "📏 Medidas de Sulco",
+        "📑 Tabela Completa"
+    ])
 
-    df_filtrado = df_pneus[(df_pneus["Modelo (Atual)"].isin(modelos)) & (df_pneus["Posição"].isin(posicoes))]
+    # ----------------- ABA INDICADORES -----------------
+    with aba1:
+        st.subheader("📌 Indicadores Gerais")
 
-    # -------------------
-    # Alertas de desgaste
-    LIMITE_DESGASTE = 0.03
-    df_filtrado["Alerta Desgaste"] = df_filtrado["Desgaste por Km"].apply(
-        lambda x: "⚠️ Alto" if pd.notna(x) and x > LIMITE_DESGASTE else "Normal"
-    )
+        total_pneus = df_pneus["Referência"].nunique()
+        status_counts = df_pneus["Status"].value_counts()
+        estoque = status_counts.get("Estoque", 0)
+        sucata = status_counts.get("Sucata", 0)
+        caminhao = status_counts.get("Caminhão", 0)
 
-    # -------------------
-    # Mostrar dataframe filtrado com destaque para pneus críticos
-    st.subheader("Dados Atualizados com Alertas")
-    def color_desgaste(val):
-        if val == "⚠️ Alto":
-            return 'background-color: #FFCCCC'  # vermelho claro
-        return ''
-    st.dataframe(df_filtrado.style.applymap(color_desgaste, subset=["Alerta Desgaste"])
-                 .format({
-                     "Sulco Novo": "{:.2f}",
-                     "Sulco Consumido": "{:.2f}",
-                     "Desgaste por Km": "{:.5f}"
-                 }))
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("🛞 Total de Pneus", total_pneus)
+        col2.metric("📦 Estoque", estoque)
+        col3.metric("♻️ Sucata", sucata)
+        col4.metric("🚚 Caminhão", caminhao)
 
-    # -------------------
-    # Gráfico: Desgaste por Km
-    st.subheader("Desgaste por Km por Modelo e Posição")
-    fig = px.bar(df_filtrado, x="Modelo (Atual)", y="Desgaste por Km", color="Posição", barmode="group")
-    fig.add_hline(y=LIMITE_DESGASTE, line_dash="dash", line_color="red", annotation_text="Limite")
-    st.plotly_chart(fig, use_container_width=True)
+        col5, col6, col7 = st.columns(3)
+        media_sulco = df_pneus["Aferição - Sulco"].dropna().mean()
+        media_km = df_pneus["Km Rodado até Aferição"].dropna().mean()
+        pneu_critico = df_pneus[df_pneus["Aferição - Sulco"] < 2]
+        perc_critico = len(pneu_critico) / len(df_pneus) * 100
 
-    # Gráfico de pneus críticos
-    st.subheader("Pneus com Desgaste Alto")
-    df_critico = df_filtrado[df_filtrado["Alerta Desgaste"] == "⚠️ Alto"]
-    if not df_critico.empty:
-        fig_critico = px.bar(df_critico, x="Modelo (Atual)", y="Desgaste por Km",
-                             color="Posição", text="Desgaste por Km")
-        fig_critico.add_hline(y=LIMITE_DESGASTE, line_dash="dash", line_color="red", annotation_text="Limite")
-        st.plotly_chart(fig_critico, use_container_width=True)
-    else:
-        st.info("Nenhum pneu acima do limite de desgaste.")
+        col5.metric("🟢 Média Sulco (mm)", f"{media_sulco:.2f}")
+        col6.metric("🛣️ Média Km até Aferição", f"{media_km:,.0f} km")
+        col7.metric("⚠️ Pneus Críticos (<2mm)", len(pneu_critico), f"{perc_critico:.1f}%")
 
-else:
-    st.info("Aguardando upload do arquivo Excel...")
+    # ----------------- ABA GRÁFICOS -----------------
+    with aba2:
+        st.subheader("📈 Relação Km Rodado x Sulco")
+        df_com_km = df_pneus[df_pneus["Km Rodado até Aferição"].notna()].copy()
+
+        if not df_com_km.empty:
+            df_com_km["Crítico"] = df_com_km["Aferição - Sulco"].apply(
+                lambda x: "Crítico" if pd.notna(x) and x < 2 else "Normal"
+            )
+
+            fig = px.scatter(
+                df_com_km,
+                x="Km Rodado até Aferição",
+                y="Aferição - Sulco",
+                color="Crítico",
+                hover_data=["Referência", "Modelo (Atual)", "Marca (Atual)", "Posição", "Vida", "Status"],
+                height=500
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+            st.subheader("📈 Tabela: Relação Km Rodado x Sulco")
+            df_tabela = df_com_km[["Referência", "Veículo - Placa", "Marca (Atual)", "Modelo (Atual)", "Vida", "Status", "Km Rodado até Aferição", "Aferição - Sulco"]].copy()
+            df_tabela = df_tabela.sort_values(by="Km Rodado até Aferição", ascending=True)
+            st.dataframe(df_tabela.style.applymap(colorir_sulco, subset=["Aferição - Sulco"]), use_container_width=True)
+
+    # ----------------- ABA MEDIDAS DE SULCO -----------------
+    with aba3:
+        st.subheader("📏 Medidas de Sulco")
+        df_sulco_tabela = df_pneus[df_pneus["Aferição - Sulco"].notna()].copy()
+        df_sulco_tabela = df_sulco_tabela.sort_values(by="Aferição - Sulco", ascending=True)
+        colunas_sulco = ["Referência", "Veículo - Placa", "Marca (Atual)", "Modelo (Atual)", "Vida", "Status", "Aferição - Sulco"]
+        st.dataframe(
+            df_sulco_tabela[colunas_sulco].style.applymap(colorir_sulco, subset=["Aferição - Sulco"]),
+            use_container_width=True
+        )
+
+    # ----------------- ABA TABELA COMPLETA -----------------
+    with aba4:
+        st.subheader("📑 Tabela Completa")
+        status_filter = st.multiselect(
+            "Filtrar por Status",
+            options=df_pneus["Status"].unique(),
+            default=df_pneus["Status"].unique()
+        )
+        df_filtrado = df_pneus[df_pneus["Status"].isin(status_filter)].copy()
+        st.dataframe(
+            df_filtrado.style.applymap(colorir_sulco, subset=["Aferição - Sulco"]),
+            use_container_width=True
+        )
