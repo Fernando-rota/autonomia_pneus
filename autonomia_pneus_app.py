@@ -153,29 +153,32 @@ if arquivo:
     # ----------------- ABA INDICADORES -----------------
     with aba1:
         st.subheader("📌 Indicadores Gerais")
-        df_ind = df_pneus[df_pneus["Status"].isin(["Estoque","Caminhão"])].copy()
 
-        total_pneus = len(df_ind)
-        estoque = int(df_ind["Status"].value_counts().get("Estoque",0))
-        caminhao = int(df_ind["Status"].value_counts().get("Caminhão",0))
+        # Total de Pneus: apenas Estoque + Caminhão
+        df_total = df_pneus[df_pneus["Status"].isin(["Estoque","Caminhão"])]
+        total_pneus = len(df_total)
+
+        # Pneus ativos: Status "Pneus"
+        df_pneus_status = df_pneus[df_pneus["Status"]=="Pneus"]
+        total_pneus_ativos = len(df_pneus_status)
+
+        # Estoque
+        estoque = int(df_total["Status"].value_counts().get("Estoque",0))
+        # Caminhão
+        caminhao = int(df_total["Status"].value_counts().get("Caminhão",0))
+        # Sucata: +6
         sucata = int(df_pneus["Status"].value_counts().get("Sucata",0)) + 6
 
-        # Km total
-        km_total = df_ind["Km Rodado até Aferição"].dropna().sum()
+        # Km Total Rodado (somente Estoque + Caminhão)
+        km_total = df_total["Km Rodado até Aferição"].dropna().sum()
         km_total_str = f"{int(km_total):,} km" if km_total > 0 else "0 km"
 
-        col1,col2,col3,col4,col5 = st.columns(5)
+        col1, col2, col3, col4, col5 = st.columns(5)
         col1.metric("🛞 Total de Pneus", total_pneus)
         col2.metric("📦 Estoque", estoque)
-        col3.metric("♻️ Sucata", sucata)
-        col4.metric("🚚 Caminhão", caminhao)
+        col3.metric("🚚 Caminhão", caminhao)
+        col4.metric("♻️ Sucata", sucata)
         col5.metric("🛣️ Km Total Rodado", km_total_str)
-
-    # ----------------- ABA GRÁFICOS -----------------
-    with aba2:
-        st.subheader("📊 Distribuição do Sulco Atual por Tipo de Veículo")
-        fig1 = px.box(df_pneus,x="Tipo Veículo",y="Aferição - Sulco",color="Tipo Veículo",points="all")
-        st.plotly_chart(fig1,use_container_width=True)
 
     # ----------------- ABA MEDIDAS DE SULCO -----------------
     with aba3:
@@ -184,25 +187,9 @@ if arquivo:
                      "Vida","Sulco Inicial","Status","Aferição - Sulco","Sulco Consumido","Km Rodado até Aferição",
                      "Desgaste (mm/km)","Posição","Sigla da Posição"]
         cols_show = [c for c in cols_show if c in df_pneus.columns]
-        st.dataframe(df_pneus[cols_show].style.applymap(colorir_sulco,subset=["Aferição - Sulco"]),use_container_width=True)
 
-    # ----------------- ABA TABELA COMPLETA -----------------
-    with aba4:
-        st.subheader("📑 Tabela Completa")
-        st.dataframe(df_pneus.style.applymap(colorir_sulco,subset=["Aferição - Sulco"]),use_container_width=True)
-
-    # ----------------- ABA LEGENDA -----------------
-    with aba5:
-        st.subheader("📖 Siglas de Posição")
-        st.dataframe(df_posicao.rename(columns={"Sigla da Posição":"SIGLA","Posição":"POSIÇÃO"}),use_container_width=True)
-
-        st.subheader("📖 Sulco Inicial por Modelo (Novos)")
-        df_leg = df_sulco[df_sulco["_VIDA"]=="NOVO"][["Modelo (Atual)","Sulco"]].dropna().sort_values("Modelo (Atual)")
-        st.dataframe(df_leg.rename(columns={"Sulco":"Sulco (mm)"}),use_container_width=True)
-
-        st.subheader("📊 Medida da Rodagem por Tipo de Veículo")
-        df_rod = df_pneus.groupby("Tipo Veículo")["Desgaste (mm/km)"].mean().reset_index()
-        st.dataframe(df_rod,use_container_width=True)
-
-else:
-    st.info("Aguardando upload do arquivo Excel…")
+        df_med = df_pneus[cols_show].copy()
+        # Formatar coluna Km
+        if "Km Rodado até Aferição" in df_med.columns:
+            df_med["Km Rodado até Aferição"] = df_med["Km Rodado até Aferição"].apply(lambda x: f"{int(x):,} km" if pd.notna(x) else "")
+        st.dataframe(df_med.style.applymap(colorir_sulco,subset=["Aferição - Sulco"]),use_container_width=True)
