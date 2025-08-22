@@ -10,18 +10,23 @@ st.title("📊 Gestão de Pneus")
 arquivo = st.file_uploader("Carregue a planilha de pneus", type=["xlsx", "xls"])
 
 if arquivo:
-    # Ler a aba principal
-    df = pd.read_excel(arquivo, sheet_name="Principal", engine="openpyxl")
-    df.columns = df.columns.str.strip()
+    # Ver abas do Excel
+    xls = pd.ExcelFile(arquivo, engine="openpyxl")
+    st.write("Abas do Excel:", xls.sheet_names)
 
-    # Ler a aba Sulco (Sulco Novo por modelo)
-    df_sulco = pd.read_excel(arquivo, sheet_name="Sulco", engine="openpyxl")
+    # Seleção de abas
+    aba_principal = st.selectbox("Selecione a aba principal de pneus", xls.sheet_names)
+    aba_sulco = st.selectbox("Selecione a aba Sulco", xls.sheet_names)
+
+    # Ler abas
+    df = pd.read_excel(arquivo, sheet_name=aba_principal, engine="openpyxl")
+    df.columns = df.columns.str.strip()
+    
+    df_sulco = pd.read_excel(arquivo, sheet_name=aba_sulco, engine="openpyxl")
     df_sulco.columns = df_sulco.columns.str.strip()
 
     # Criar dicionário Modelo -> Sulco Novo
     sulco_novo_dict = df_sulco.set_index("Modelo (Atual)")["Sulco"].to_dict()
-
-    # Mapear Sulco Novo no df principal
     df["Sulco Novo"] = df["Modelo (Atual)"].map(sulco_novo_dict)
 
     # ----------------- FUNÇÕES -----------------
@@ -49,14 +54,12 @@ if arquivo:
     df["Observação - Km"] = df["Observação"].apply(extrair_km_observacao)
     df["Km Rodado até Aferição"] = df["Observação - Km"] - df["Hodômetro Inicial"]
 
-    # Sulco Consumido (só calcula se houver Sulco Novo e Aferição)
     df["Sulco Consumido"] = df.apply(
         lambda x: x["Sulco Novo"] - x["Aferição - Sulco"]
         if pd.notna(x["Sulco Novo"]) and pd.notna(x["Aferição - Sulco"]) else 0,
         axis=1
     )
 
-    # Desgaste por Km (só calcula se Km Rodado > 0)
     df["Desgaste por Km"] = df.apply(
         lambda x: x["Sulco Consumido"] / x["Km Rodado até Aferição"]
         if pd.notna(x["Km Rodado até Aferição"]) and x["Km Rodado até Aferição"] > 0 else 0,
