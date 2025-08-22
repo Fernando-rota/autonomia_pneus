@@ -9,19 +9,10 @@ st.title("📊 Gestão de Pneus")
 arquivo = st.file_uploader("Carregue a planilha de pneus", type=["xlsx", "xls"])
 
 if arquivo:
-    # ----------------- LER PLANILHAS -----------------
-    df_pneus = pd.read_excel(arquivo, sheet_name="pneus", engine="openpyxl")
-    df_pneus.columns = df_pneus.columns.str.strip()
-
-    df_posicao = pd.read_excel(arquivo, sheet_name="posição", engine="openpyxl")
-    df_posicao.columns = df_posicao.columns.str.strip()
-
-    df_sulco = pd.read_excel(arquivo, sheet_name="sulco", engine="openpyxl")
-    df_sulco.columns = df_sulco.columns.str.strip()
+    df = pd.read_excel(arquivo, engine="openpyxl")
 
     # ----------------- FUNÇÕES -----------------
     def extrair_km_observacao(texto):
-        """Extrai valor em km do campo Observação"""
         if pd.isna(texto):
             return None
         match = re.search(r"(\d+)\s*km", str(texto))
@@ -30,7 +21,6 @@ if arquivo:
         return None
 
     def colorir_sulco(val):
-        """Colore células de acordo com o sulco"""
         try:
             val_float = float(val)
             if val_float < 2:
@@ -43,49 +33,47 @@ if arquivo:
             return ""
 
     # ----------------- PREPARAR DADOS -----------------
-    # Mapear posição (SIGLA -> POSIÇÃO)
-    df_pneus = df_pneus.merge(
-        df_posicao.rename(columns={"SIGLA": "Sigla da Posição", "POSIÇÃO": "Posição"}),
-        on="Sigla da Posição",
-        how="left"
-    )
+    df["Observação - Km"] = df["Observação"].apply(extrair_km_observacao)
+    df["Km Rodado até Aferição"] = df["Observação - Km"] - df["Hodômetro Inicial"]
 
-    # Calcular km rodado
-    df_pneus["Observação - Km"] = df_pneus["Observação"].apply(extrair_km_observacao)
-    df_pneus["Km Rodado até Aferição"] = df_pneus["Vida do Pneu - Km. Rodado"]
-
-    # Mapear sulco novo
-    sulco_novo_dict = df_sulco.set_index("Modelo (Atual)")["Sulco"].to_dict()
-    df_pneus["Sulco Novo"] = df_pneus["Modelo (Atual)"].map(sulco_novo_dict)
-
-    # Calcular sulco consumido
-    df_pneus["Sulco Consumido"] = df_pneus.apply(
-        lambda x: x["Sulco Novo"] - x["Aferição - Sulco"]
-        if pd.notna(x["Sulco Novo"]) and pd.notna(x["Aferição - Sulco"]) else None,
-        axis=1
-    )
-
-    # Desgaste por km
-    df_pneus["Desgaste por Km"] = df_pneus.apply(
-        lambda x: x["Sulco Consumido"] / x["Km Rodado até Aferição"]
-        if pd.notna(x["Sulco Consumido"]) and pd.notna(x["Km Rodado até Aferição"]) and x["Km Rodado até Aferição"] > 0 else None,
-        axis=1
-    )
+    # Ajuste de estoque (6 pneus extras)
+    df_extra = pd.DataFrame({
+        "Referência": [f"Extra{i}" for i in range(1, 7)],
+        "Status": ["Sucata"]*6,
+        "Veículo - Placa": [None]*6,
+        "Modelo (Atual)": [None]*6,
+        "Marca (Atual)": [None]*6,
+        "Aferição - Sulco": [0]*6,
+        "Hodômetro Inicial": [0]*6,
+        "Observação": [None]*6,
+        "Vida": ["Ressolado"]*6
+    })
+    df = pd.concat([df, df_extra], ignore_index=True)
+    df["Km Rodado até Aferição"] = df["Observação - Km"] - df["Hodômetro Inicial"]
 
     # ----------------- CRIAR ABAS -----------------
-    aba1, aba2, aba3, aba4 = st.tabs([
+    aba1, aba2, aba4, aba3 = st.tabs([
         "📌 Indicadores",
         "📈 Gráficos",
         "📏 Medidas de Sulco",
         "📑 Tabela Completa"
     ])
 
-    # ----------------- ABA INDICADORES -----------------
+    # ----------------- ABA DE INDICADORES -----------------
     with aba1:
         st.subheader("📌 Indicadores Gerais")
+        st.markdown(
+            """
+            Este painel de BI apresenta a **gestão de pneus das 3 unidades**.  
+            Os indicadores refletem os dados cadastrados no sistema a partir de **maio/2025**.  
 
-        total_pneus = df_pneus["Referência"].nunique()
-        status_counts = df_pneus["Status"].value_counts()
+            O objetivo deste BI é fornecer uma visão geral do estoque, sucata, pneus em uso nos caminhões e alertas de pneus críticos.  
+            Ele permite monitorar a **vida útil dos pneus**, identificar pneus próximos do limite de segurança e otimizar o gerenciamento da frota.
+            """
+        )
+
+        total_pneus = df["Referência"].nunique()
+        status_counts = df["Status"].value_counts()
         estoque = status_counts.get("Estoque", 0)
         sucata = status_counts.get("Sucata", 0)
         caminhao = status_counts.get("Caminhão", 0)
@@ -97,60 +85,87 @@ if arquivo:
         col4.metric("🚚 Caminhão", caminhao)
 
         col5, col6, col7 = st.columns(3)
-        media_sulco = df_pneus["Aferição - Sulco"].dropna().mean()
-        media_km = df_pneus["Km Rodado até Aferição"].dropna().mean()
-        pneu_critico = df_pneus[df_pneus["Aferição - Sulco"] < 2]
-        perc_critico = len(pneu_critico) / len(df_pneus) * 100
+        media_sulco = df["Aferição - Sulco"].dropna().mean()
+        media_km = df["Km Rodado até Aferição"].dropna().mean()
+        pneu_critico = df[df["Aferição - Sulco"] < 2]
+        perc_critico = len(pneu_critico) / len(df) * 100
 
         col5.metric("🟢 Média Sulco (mm)", f"{media_sulco:.2f}")
         col6.metric("🛣️ Média Km até Aferição", f"{media_km:,.0f} km")
         col7.metric("⚠️ Pneus Críticos (<2mm)", len(pneu_critico), f"{perc_critico:.1f}%")
 
-    # ----------------- ABA GRÁFICOS -----------------
+    # ----------------- ABA DE GRÁFICO -----------------
     with aba2:
         st.subheader("📈 Relação Km Rodado x Sulco")
-        df_com_km = df_pneus[df_pneus["Km Rodado até Aferição"].notna()].copy()
+        st.markdown(
+            "Cada ponto representa um pneu. O eixo X mostra a quilometragem rodada até a aferição, "
+            "e o eixo Y mostra a profundidade do sulco. Pneus críticos (<2mm) estão em vermelho."
+        )
 
+        df_com_km = df[df["Km Rodado até Aferição"].notna() & (df["Km Rodado até Aferição"] > 0)].copy()
         if not df_com_km.empty:
-            df_com_km["Crítico"] = df_com_km["Aferição - Sulco"].apply(
-                lambda x: "Crítico" if pd.notna(x) and x < 2 else "Normal"
-            )
+            def cor_pneu(row):
+                if pd.notna(row["Aferição - Sulco"]) and row["Aferição - Sulco"] < 2:
+                    return "Crítico"
+                else:
+                    return row["Marca (Atual)"]
 
-            fig = px.scatter(
+            df_com_km["Cor_Gráfico"] = df_com_km.apply(cor_pneu, axis=1)
+
+            cores_set2 = px.colors.qualitative.Set2
+            marcas = df_com_km["Marca (Atual)"].dropna().unique().tolist()
+            color_map = {marca: cores_set2[i % len(cores_set2)] for i, marca in enumerate(marcas)}
+            color_map["Crítico"] = "#FF0000"
+
+            fig_desgaste = px.scatter(
                 df_com_km,
                 x="Km Rodado até Aferição",
                 y="Aferição - Sulco",
-                color="Crítico",
-                hover_data=["Referência", "Modelo (Atual)", "Marca (Atual)", "Posição", "Vida", "Status"],
+                color="Cor_Gráfico",
+                hover_data=["Veículo - Placa", "Modelo (Atual)", "Status", "Vida"],
+                color_discrete_map=color_map,
                 height=500
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig_desgaste, use_container_width=True)
 
             st.subheader("📈 Tabela: Relação Km Rodado x Sulco")
-            df_tabela = df_com_km[["Referência", "Veículo - Placa", "Marca (Atual)", "Modelo (Atual)", "Vida", "Status", "Km Rodado até Aferição", "Aferição - Sulco"]].copy()
+            df_tabela = df_com_km.copy()
+            
+            # Ordenar antes de formatar
             df_tabela = df_tabela.sort_values(by="Km Rodado até Aferição", ascending=True)
-            st.dataframe(df_tabela.style.applymap(colorir_sulco, subset=["Aferição - Sulco"]), use_container_width=True)
+            
+            # Formatar colunas para exibição
+            df_tabela["Aferição - Sulco"] = df_tabela["Aferição - Sulco"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
+            df_tabela["Km Rodado até Aferição"] = df_tabela["Km Rodado até Aferição"].map(lambda x: f"{int(x):,} km")
 
-    # ----------------- ABA MEDIDAS DE SULCO -----------------
-    with aba3:
+            colunas_tabela = ["Referência", "Veículo - Placa", "Marca (Atual)", "Modelo (Atual)", "Vida", "Status", "Km Rodado até Aferição", "Aferição - Sulco"]
+            st.dataframe(
+                df_tabela[colunas_tabela].style.applymap(colorir_sulco, subset=["Aferição - Sulco"]),
+                use_container_width=True
+            )
+
+    # ----------------- ABA DE MEDIDAS DE SULCO -----------------
+    with aba4:
         st.subheader("📏 Medidas de Sulco")
-        df_sulco_tabela = df_pneus[df_pneus["Aferição - Sulco"].notna()].copy()
-        df_sulco_tabela = df_sulco_tabela.sort_values(by="Aferição - Sulco", ascending=True)
+        df_sulco = df[(df["Aferição - Sulco"].notna()) & (~df["Referência"].astype(str).str.contains("Extra"))].copy()
+        df_sulco = df_sulco.sort_values(by="Aferição - Sulco", ascending=True)
+        df_sulco["Aferição - Sulco"] = df_sulco["Aferição - Sulco"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
         colunas_sulco = ["Referência", "Veículo - Placa", "Marca (Atual)", "Modelo (Atual)", "Vida", "Status", "Aferição - Sulco"]
         st.dataframe(
-            df_sulco_tabela[colunas_sulco].style.applymap(colorir_sulco, subset=["Aferição - Sulco"]),
+            df_sulco[colunas_sulco].style.applymap(colorir_sulco, subset=["Aferição - Sulco"]),
             use_container_width=True
         )
 
-    # ----------------- ABA TABELA COMPLETA -----------------
-    with aba4:
+    # ----------------- ABA DE TABELA COMPLETA -----------------
+    with aba3:
         st.subheader("📑 Tabela Completa")
+        df_filtrado = df[~df["Referência"].astype(str).str.contains("Extra")].copy()
         status_filter = st.multiselect(
             "Filtrar por Status",
-            options=df_pneus["Status"].unique(),
-            default=df_pneus["Status"].unique()
+            options=df_filtrado["Status"].unique(),
+            default=df_filtrado["Status"].unique()
         )
-        df_filtrado = df_pneus[df_pneus["Status"].isin(status_filter)].copy()
+        df_filtrado = df_filtrado[df_filtrado["Status"].isin(status_filter)].copy()
         st.dataframe(
             df_filtrado.style.applymap(colorir_sulco, subset=["Aferição - Sulco"]),
             use_container_width=True
