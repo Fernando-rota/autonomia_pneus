@@ -6,10 +6,23 @@ import re
 st.set_page_config(page_title="Gestão de Pneus", layout="wide")
 st.title("📊 Gestão de Pneus")
 
+# ----------------- UPLOAD -----------------
 arquivo = st.file_uploader("Carregue a planilha de pneus", type=["xlsx", "xls"])
 
 if arquivo:
-    df = pd.read_excel(arquivo, engine="openpyxl")
+    # Ler a aba principal
+    df = pd.read_excel(arquivo, sheet_name="Principal", engine="openpyxl")
+    df.columns = df.columns.str.strip()
+
+    # Ler a aba Sulco (Sulco Novo por modelo)
+    df_sulco = pd.read_excel(arquivo, sheet_name="Sulco", engine="openpyxl")
+    df_sulco.columns = df_sulco.columns.str.strip()
+
+    # Criar dicionário Modelo -> Sulco Novo
+    sulco_novo_dict = df_sulco.set_index("Modelo (Atual)")["Sulco"].to_dict()
+
+    # Mapear Sulco Novo no df principal
+    df["Sulco Novo"] = df["Modelo (Atual)"].map(sulco_novo_dict)
 
     # ----------------- FUNÇÕES -----------------
     def extrair_km_observacao(texto):
@@ -36,53 +49,29 @@ if arquivo:
     df["Observação - Km"] = df["Observação"].apply(extrair_km_observacao)
     df["Km Rodado até Aferição"] = df["Observação - Km"] - df["Hodômetro Inicial"]
 
-    # Ajuste de estoque (6 pneus extras)
-    df_extra = pd.DataFrame({
-        "Referência": [f"Extra{i}" for i in range(1, 7)],
-        "Status": ["Sucata"]*6,
-        "Veículo - Placa": [None]*6,
-        "Modelo (Atual)": [None]*6,
-        "Marca (Atual)": [None]*6,
-        "Aferição - Sulco": [0]*6,
-        "Hodômetro Inicial": [0]*6,
-        "Observação": [None]*6,
-        "Vida": ["Ressolado"]*6
-    })
-    df = pd.concat([df, df_extra], ignore_index=True)
-    df["Km Rodado até Aferição"] = df["Observação - Km"] - df["Hodômetro Inicial"]
-
-    # ----------------- SULCO NOVO / CONSUMIDO -----------------
-    # Exemplo de dicionário, pode ser substituído pela aba de legenda
-    sulco_novo_dict = {
-        "PIRELLI 275/80 LISO": 15.0,
-        "MICHELLIN 275/08  LISO": 15.45,
-        "GOODYEAR 275/80  BORRACHUDO": 17.425
-    }
-    df["Sulco Novo"] = df["Modelo (Atual)"].map(sulco_novo_dict)
-
-    # Sulco Consumido: só calcula se houver Sulco Novo e Aferição
+    # Sulco Consumido (só calcula se houver Sulco Novo e Aferição)
     df["Sulco Consumido"] = df.apply(
-        lambda x: x["Sulco Novo"] - x["Aferição - Sulco"] 
+        lambda x: x["Sulco Novo"] - x["Aferição - Sulco"]
         if pd.notna(x["Sulco Novo"]) and pd.notna(x["Aferição - Sulco"]) else 0,
         axis=1
     )
 
-    # Desgaste por Km: só calcula se Km Rodado > 0
+    # Desgaste por Km (só calcula se Km Rodado > 0)
     df["Desgaste por Km"] = df.apply(
-        lambda x: x["Sulco Consumido"] / x["Km Rodado até Aferição"] 
+        lambda x: x["Sulco Consumido"] / x["Km Rodado até Aferição"]
         if pd.notna(x["Km Rodado até Aferição"]) and x["Km Rodado até Aferição"] > 0 else 0,
         axis=1
     )
 
-    # ----------------- CRIAR ABAS -----------------
-    aba1, aba2, aba4, aba3 = st.tabs([
+    # ----------------- ABAS -----------------
+    aba1, aba2, aba3, aba4 = st.tabs([
         "📌 Indicadores",
         "📈 Gráficos",
         "📏 Medidas de Sulco",
         "📑 Tabela Completa"
     ])
 
-    # ----------------- ABA DE INDICADORES -----------------
+    # ----------------- INDICADORES -----------------
     with aba1:
         st.subheader("📌 Indicadores Gerais")
         total_pneus = df["Referência"].nunique()
@@ -106,12 +95,14 @@ if arquivo:
         col6.metric("🛣️ Média Km até Aferição", f"{media_km:,.0f} km")
         col7.metric("⚠️ Pneus Críticos (<2mm)", len(pneu_critico), f"{perc_critico:.1f}%")
 
-    # ----------------- ABA DE GRÁFICOS -----------------
+    # ----------------- GRÁFICOS -----------------
     with aba2:
-        st.subheader("📈 Relação Km Rodado x Sulco / Desgaste")
+        st.subheader("📈 Relação Km Rodado x Sulco")
         df_plot = df[df["Km Rodado até Aferição"].notna() & (df["Km Rodado até Aferição"] > 0)].copy()
         if not df_plot.empty:
-            df_plot["Cor_Gráfico"] = df_plot.apply(lambda x: "Crítico" if x["Aferição - Sulco"] < 2 else x["Marca (Atual)"], axis=1)
+            df_plot["Cor_Gráfico"] = df_plot.apply(
+                lambda x: "Crítico" if x["Aferição - Sulco"] < 2 else x["Marca (Atual)"], axis=1
+            )
             cores_set2 = px.colors.qualitative.Set2
             marcas = df_plot["Marca (Atual)"].dropna().unique().tolist()
             color_map = {marca: cores_set2[i % len(cores_set2)] for i, marca in enumerate(marcas)}
@@ -128,20 +119,20 @@ if arquivo:
             )
             st.plotly_chart(fig, use_container_width=True)
 
-    # ----------------- ABA DE MEDIDAS DE SULCO -----------------
-    with aba4:
+    # ----------------- MEDIDAS DE SULCO -----------------
+    with aba3:
         st.subheader("📏 Medidas de Sulco / Desgaste")
-        df_sulco = df[df["Aferição - Sulco"].notna()].copy()
-        df_sulco = df_sulco.sort_values(by="Aferição - Sulco")
-        df_sulco["Aferição - Sulco"] = df_sulco["Aferição - Sulco"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
-        df_sulco["Sulco Consumido"] = df_sulco["Sulco Consumido"].map(lambda x: f"{x:.2f}")
-        df_sulco["Desgaste por Km"] = df_sulco["Desgaste por Km"].map(lambda x: f"{x:.4f}")
+        df_sulco_tab = df[df["Aferição - Sulco"].notna()].copy()
+        df_sulco_tab = df_sulco_tab.sort_values(by="Aferição - Sulco")
+        df_sulco_tab["Aferição - Sulco"] = df_sulco_tab["Aferição - Sulco"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
+        df_sulco_tab["Sulco Consumido"] = df_sulco_tab["Sulco Consumido"].map(lambda x: f"{x:.2f}")
+        df_sulco_tab["Desgaste por Km"] = df_sulco_tab["Desgaste por Km"].map(lambda x: f"{x:.4f}")
         st.dataframe(
-            df_sulco[["Referência","Veículo - Placa","Marca (Atual)","Modelo (Atual)","Aferição - Sulco","Sulco Consumido","Desgaste por Km"]],
+            df_sulco_tab[["Referência","Veículo - Placa","Marca (Atual)","Modelo (Atual)","Aferição - Sulco","Sulco Consumido","Desgaste por Km"]],
             use_container_width=True
         )
 
-    # ----------------- ABA DE TABELA COMPLETA -----------------
-    with aba3:
+    # ----------------- TABELA COMPLETA -----------------
+    with aba4:
         st.subheader("📑 Tabela Completa")
         st.dataframe(df, use_container_width=True)
