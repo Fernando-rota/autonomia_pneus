@@ -166,8 +166,8 @@ if arquivo:
         estoque = int(df_total["Status"].value_counts().get("Estoque",0))
         # Caminhão
         caminhao = int(df_total["Status"].value_counts().get("Caminhão",0))
-        # Sucata: +6
-        sucata = int(df_pneus["Status"].value_counts().get("Sucata",0)) + 6
+        # Sucata: quantidade atual + 6 pneus extras
+        sucata = int(df_pneus["Status"].value_counts().get("Sucata",0)) + 6  # resultado = 14
 
         # Km Total Rodado (somente Estoque + Caminhão)
         km_total = df_total["Km Rodado até Aferição"].dropna().sum()
