@@ -51,22 +51,28 @@ if arquivo:
     df = pd.concat([df, df_extra], ignore_index=True)
     df["Km Rodado até Aferição"] = df["Observação - Km"] - df["Hodômetro Inicial"]
 
-    # ----------------- NOVAS COLUNAS -----------------
-    # Sulco Consumido = Sulco Novo - Sulco aferido
-    # Aqui, você pode criar um dicionário modelo -> sulco novo ou pegar de coluna existente
+    # ----------------- SULCO NOVO / CONSUMIDO -----------------
+    # Exemplo de dicionário, pode ser substituído pela aba de legenda
     sulco_novo_dict = {
-        # Exemplo: "Modelo (Atual)": sulco em mm
         "PIRELLI 275/80 LISO": 15.0,
         "MICHELLIN 275/08  LISO": 15.45,
         "GOODYEAR 275/80  BORRACHUDO": 17.425
     }
     df["Sulco Novo"] = df["Modelo (Atual)"].map(sulco_novo_dict)
-    df["Sulco Consumido"] = df["Sulco Novo"] - df["Aferição - Sulco"]
 
-    # Desgaste por km
-    df["Desgaste por Km"] = df["Sulco Consumido"] / df["Km Rodado até Aferição"]
-    df["Desgaste por Km"] = df["Desgaste por Km"].fillna(0)
-    df["Sulco Consumido"] = df["Sulco Consumido"].fillna(0)
+    # Sulco Consumido: só calcula se houver Sulco Novo e Aferição
+    df["Sulco Consumido"] = df.apply(
+        lambda x: x["Sulco Novo"] - x["Aferição - Sulco"] 
+        if pd.notna(x["Sulco Novo"]) and pd.notna(x["Aferição - Sulco"]) else 0,
+        axis=1
+    )
+
+    # Desgaste por Km: só calcula se Km Rodado > 0
+    df["Desgaste por Km"] = df.apply(
+        lambda x: x["Sulco Consumido"] / x["Km Rodado até Aferição"] 
+        if pd.notna(x["Km Rodado até Aferição"]) and x["Km Rodado até Aferição"] > 0 else 0,
+        axis=1
+    )
 
     # ----------------- CRIAR ABAS -----------------
     aba1, aba2, aba4, aba3 = st.tabs([
