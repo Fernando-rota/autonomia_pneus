@@ -9,7 +9,18 @@ st.title("📊 Gestão de Pneus")
 arquivo = st.file_uploader("Carregue a planilha de pneus", type=["xlsx", "xls"])
 
 if arquivo:
-    df = pd.read_excel(arquivo, engine="openpyxl")
+    # ----------------- LER PLANILHA -----------------
+    xls = pd.ExcelFile(arquivo)
+
+    # Aba principal (dados de pneus)
+    df = pd.read_excel(xls, sheet_name=xls.sheet_names[0], engine="openpyxl")
+
+    # Aba legenda (sulco novo por modelo de pneu)
+    if "Legenda" in xls.sheet_names:
+        df_legenda = pd.read_excel(xls, sheet_name="Legenda", engine="openpyxl")
+    else:
+        st.error("❌ Não encontrei a aba 'Legenda' na planilha. Verifique o arquivo.")
+        st.stop()
 
     # ----------------- FUNÇÕES -----------------
     def extrair_km_observacao(texto):
@@ -65,11 +76,11 @@ if arquivo:
     df = pd.concat([df, df_extra], ignore_index=True)
     df["Km Rodado até Aferição"] = df["Observação - Km"] - df["Hodômetro Inicial"]
 
-    # Sulco novo médio por modelo (apenas pneus sem uso e não extras)
-    df_novos = df[(df["Km Rodado até Aferição"].isna()) | (df["Km Rodado até Aferição"] <= 0)]
-    sulco_novo_por_modelo = df_novos.groupby("Modelo (Atual)")["Aferição - Sulco"].mean()
+    # Dicionário de sulco novo por modelo (da aba Legenda)
+    sulco_legenda = df_legenda.set_index("Modelo (Atual)")["Sulco"].to_dict()
 
-    df["Sulco Novo"] = df["Modelo (Atual)"].map(sulco_novo_por_modelo)
+    # Novas colunas
+    df["Sulco Novo"] = df["Modelo (Atual)"].map(sulco_legenda)
     df["Sulco Consumido"] = df["Sulco Novo"] - df["Aferição - Sulco"]
     df["Desgaste por Km"] = df["Sulco Consumido"] / df["Km Rodado até Aferição"]
     df["Categoria Veículo"] = df["Veículo - Descrição"].apply(classificar_veiculo)
@@ -131,7 +142,7 @@ if arquivo:
                 x="Km Rodado até Aferição",
                 y="Aferição - Sulco",
                 color="Cor_Gráfico",
-                hover_data=["Veículo - Placa", "Modelo (Atual)", "Status", "Vida"],
+                hover_data=["Veículo - Placa", "Modelo (Atual)", "Status", "Vida", "Sulco Novo", "Sulco Consumido", "Desgaste por Km"],
                 color_discrete_map=color_map,
                 height=500
             )
@@ -155,7 +166,8 @@ if arquivo:
         df_sulco = df[(df["Aferição - Sulco"].notna()) & (~df["Referência"].astype(str).str.contains("Extra"))].copy()
         df_sulco = df_sulco.sort_values(by="Aferição - Sulco", ascending=True)
         df_sulco["Aferição - Sulco"] = df_sulco["Aferição - Sulco"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
-        colunas_sulco = ["Referência", "Veículo - Placa", "Marca (Atual)", "Modelo (Atual)", "Vida", "Sulco Novo", "Sulco Consumido", "Desgaste por Km", "Status", "Aferição - Sulco"]
+        colunas_sulco = ["Referência", "Veículo - Placa", "Marca (Atual)", "Modelo (Atual)", "Vida", 
+                         "Sulco Novo", "Sulco Consumido", "Desgaste por Km", "Status", "Aferição - Sulco"]
         st.dataframe(
             df_sulco[colunas_sulco].style.applymap(colorir_sulco, subset=["Aferição - Sulco"]),
             use_container_width=True
@@ -179,12 +191,9 @@ if arquivo:
     # ----------------- ABA DE LEGENDA -----------------
     with aba5:
         st.subheader("ℹ️ Legenda de Informações")
-        st.markdown("### Siglas de Posição")
-        if "Sigla da Posição" in df.columns:
-            st.write(df["Sigla da Posição"].dropna().unique().tolist())
 
-        st.markdown("### Sulco Novo por Modelo")
-        st.dataframe(sulco_novo_por_modelo.reset_index().rename(columns={"Aferição - Sulco": "Sulco Novo (médio)"}))
+        st.markdown("### Tabela de Sulco Novo (da planilha)")
+        st.dataframe(df_legenda, use_container_width=True)
 
         st.markdown("### Medida de Rodagem por Categoria de Veículo")
         rodagem_categoria = df.groupby("Categoria Veículo")["Km Rodado até Aferição"].mean().dropna().reset_index()
