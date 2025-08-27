@@ -3,11 +3,12 @@ import pandas as pd
 import re
 import unicodedata
 import numpy as np
+import os
 
 st.set_page_config(page_title="Gestão de Pneus", layout="wide")
 st.title("📊 Gestão de Pneus")
 
-arquivo = st.file_uploader("Carregue a planilha de pneus", type=["xlsx", "xls", "csv"])
+arquivo = st.file_uploader("Carregue a planilha de pneus", type=["xlsx"])
 
 # ----------------- HELPERS -----------------
 def to_float(x):
@@ -81,25 +82,23 @@ def classificar_veiculo(desc):
 # ----------------- LEITURA DO ARQUIVO -----------------
 if arquivo:
     try:
-        if arquivo.name.endswith(".csv"):
-            sheets = {"pneus": pd.read_csv(arquivo, sep=";", encoding="utf-8")}
-        else:
-            try:
-                sheets = pd.read_excel(arquivo, sheet_name=None, engine="openpyxl")
-            except:
-                sheets = pd.read_excel(arquivo, sheet_name=None, engine="xlrd")
-
-        required_sheets = {"pneus", "poicao", "sulco"}
-        if not required_sheets.issubset(sheets.keys()):
-            st.error(f"O arquivo precisa conter as abas: {', '.join(required_sheets)}")
+        filename = arquivo.name
+        ext = os.path.splitext(filename)[1].lower()
+        if ext != ".xlsx":
+            st.error("Formato de arquivo inválido. Use .xlsx")
             st.stop()
-        else:
-            st.success("Arquivo carregado com sucesso!")
+        
+        sheets = pd.read_excel(arquivo, engine="openpyxl", sheet_name=None)
+        
+        if not {"pneus", "poicao", "sulco"}.issubset(set(sheets.keys())):
+            st.error("O arquivo precisa conter as abas: 'pneus', 'poicao' e 'sulco'.")
+            st.stop()
 
         df_pneus = sheets["pneus"].copy()
         df_posicao = sheets["poicao"].copy()
         df_sulco = sheets["sulco"].copy()
-
+        
+        # strip de colunas
         df_pneus.columns = df_pneus.columns.str.strip()
         df_posicao.columns = df_posicao.columns.str.strip()
         df_sulco.columns  = df_sulco.columns.str.strip()
@@ -131,13 +130,13 @@ if arquivo:
             df_pneus = df_pneus.merge(df_posicao, on="Sigla da Posição", how="left")
 
         # Sulco Inicial
-        df_pneus["_VIDA"]   = df_pneus["Vida"].apply(normalize_text)
+        df_pneus["_VIDA"] = df_pneus["Vida"].apply(normalize_text)
         df_pneus["_MODELO"] = df_pneus["Modelo (Atual)"].apply(normalize_text)
-        df_sulco["_VIDA"]   = df_sulco["Vida"].apply(normalize_text)
+        df_sulco["_VIDA"] = df_sulco["Vida"].apply(normalize_text)
         df_sulco["_MODELO"] = df_sulco["Modelo (Atual)"].apply(normalize_text)
 
-        base = df_sulco[["_VIDA", "_MODELO", "Sulco"]].dropna(subset=["Sulco"]).drop_duplicates(subset=["_VIDA", "_MODELO"])
-        df_pneus = df_pneus.merge(base.rename(columns={"Sulco": "Sulco Inicial"}), on=["_VIDA","_MODELO"], how="left")
+        base = df_sulco[["_VIDA", "_MODELO", "Sulco"]].dropna(subset=["Sulco"]).drop_duplicates(subset=["_VIDA","_MODELO"])
+        df_pneus = df_pneus.merge(base.rename(columns={"Sulco":"Sulco Inicial"}), on=["_VIDA","_MODELO"], how="left")
 
         # Fallbacks
         map_model_novo = df_sulco[df_sulco["_VIDA"]=="NOVO"].dropna(subset=["Sulco"]).drop_duplicates("_MODELO").set_index("_MODELO")["Sulco"].to_dict()
@@ -210,8 +209,7 @@ if arquivo:
                              }),
                 use_container_width=True
             )
-
     except Exception as e:
         st.error(f"Erro ao processar o arquivo: {e}")
 else:
-    st.info("Aguardando upload do arquivo Excel ou CSV…")
+    st.info("Aguardando upload do arquivo Excel…")
