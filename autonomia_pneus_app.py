@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 import re
 import unicodedata
 import numpy as np
@@ -79,6 +80,7 @@ def classificar_veiculo(desc):
     return "Outro"
 
 if arquivo:
+    # ----------------- LEITURA DAS ABAS -----------------
     sheets = pd.read_excel(arquivo, engine="openpyxl", sheet_name=None)
     if not {"pneus", "posição", "sulco"}.issubset(set(sheets.keys())):
         st.error("O arquivo precisa conter as abas: 'pneus', 'posição' e 'sulco'.")
@@ -92,15 +94,23 @@ if arquivo:
     df_posicao.columns = df_posicao.columns.str.strip()
     df_sulco.columns  = df_sulco.columns.str.strip()
 
-    # Normalizações numéricas
+    # ----------------- NORMALIZAÇÕES -----------------
     df_pneus["Aferição - Sulco"] = df_pneus["Aferição - Sulco"].apply(to_float)
     df_sulco["Sulco"] = df_sulco["Sulco"].apply(to_float)
+
     if "Hodômetro Inicial" in df_pneus.columns:
         df_pneus["Hodômetro Inicial"] = df_pneus["Hodômetro Inicial"].apply(to_float)
-    df_pneus["Vida do Pneu - Km. Rodado"] = df_pneus.get("Vida do Pneu - Km. Rodado", np.nan).apply(to_float)
-    df_pneus["Observação - Km"] = df_pneus.get("Observação", np.nan).apply(extrair_km_observacao)
 
-    # Km Rodado até Aferição
+    if "Vida do Pneu - Km. Rodado" in df_pneus.columns:
+        df_pneus["Vida do Pneu - Km. Rodado"] = df_pneus["Vida do Pneu - Km. Rodado"].apply(to_float)
+    else:
+        df_pneus["Vida do Pneu - Km. Rodado"] = np.nan
+
+    if "Observação" in df_pneus.columns:
+        df_pneus["Observação - Km"] = df_pneus["Observação"].apply(extrair_km_observacao)
+    else:
+        df_pneus["Observação - Km"] = np.nan
+
     df_pneus["Km Rodado até Aferição"] = df_pneus["Vida do Pneu - Km. Rodado"]
     mask_km_vazio = df_pneus["Km Rodado até Aferição"].isna() | (df_pneus["Km Rodado até Aferição"] <= 0)
     df_pneus.loc[mask_km_vazio, "Km Rodado até Aferição"] = (
@@ -108,7 +118,7 @@ if arquivo:
     )
     df_pneus.loc[df_pneus["Km Rodado até Aferição"] <= 0, "Km Rodado até Aferição"] = np.nan
 
-    # Mapa de posição
+    # ----------------- MAPA DE POSIÇÃO -----------------
     col_map_pos = {}
     if "SIGLA" in df_posicao.columns:
         col_map_pos["SIGLA"] = "Sigla da Posição"
@@ -118,44 +128,52 @@ if arquivo:
     if "Sigla da Posição" in df_pneus.columns and "Sigla da Posição" in df_posicao.columns:
         df_pneus = df_pneus.merge(df_posicao, on="Sigla da Posição", how="left")
 
-    # Sulco Inicial
+    # ----------------- SULCO INICIAL -----------------
     for col in ["Vida", "Modelo (Atual)"]:
         if col not in df_pneus.columns or col not in df_sulco.columns:
             st.error(f"Coluna '{col}' não encontrada.")
             st.stop()
+
     df_pneus["_VIDA"]   = df_pneus["Vida"].apply(normalize_text)
     df_pneus["_MODELO"] = df_pneus["Modelo (Atual)"].apply(normalize_text)
     df_sulco["_VIDA"]   = df_sulco["Vida"].apply(normalize_text)
     df_sulco["_MODELO"] = df_sulco["Modelo (Atual)"].apply(normalize_text)
 
-    base = df_sulco[["_VIDA", "_MODELO", "Sulco"]].dropna(subset=["Sulco"]).drop_duplicates(subset=["_VIDA", "_MODELO"])
-    df_pneus = df_pneus.merge(base.rename(columns={"Sulco": "Sulco Inicial"}), on=["_VIDA","_MODELO"], how="left")
+    base = df_sulco[["_VIDA", "_MODELO", "Sulco"]].dropna(subset=["Sulco"]).drop_duplicates(subset=["_VIDA","_MODELO"])
+    df_pneus = df_pneus.merge(base.rename(columns={"Sulco":"Sulco Inicial"}), on=["_VIDA","_MODELO"], how="left")
 
-    # Fallbacks
     map_model_novo = df_sulco[df_sulco["_VIDA"]=="NOVO"].dropna(subset=["Sulco"]).drop_duplicates("_MODELO").set_index("_MODELO")["Sulco"].to_dict()
     df_pneus.loc[df_pneus["Sulco Inicial"].isna() & (df_pneus["_VIDA"]=="NOVO"), "Sulco Inicial"] = df_pneus.loc[df_pneus["Sulco Inicial"].isna() & (df_pneus["_VIDA"]=="NOVO"), "_MODELO"].map(map_model_novo)
+
     map_model_any = df_sulco.dropna(subset=["Sulco"]).groupby("_MODELO")["Sulco"].median().to_dict()
     df_pneus.loc[df_pneus["Sulco Inicial"].isna(), "Sulco Inicial"] = df_pneus.loc[df_pneus["Sulco Inicial"].isna(), "_MODELO"].map(map_model_any)
+
     mediana_por_vida = df_sulco.dropna(subset=["Sulco"]).groupby("_VIDA")["Sulco"].median()
     df_pneus.loc[df_pneus["Sulco Inicial"].isna(), "Sulco Inicial"] = df_pneus.loc[df_pneus["Sulco Inicial"].isna(), "_VIDA"].map(mediana_por_vida)
-    if df_pneus["Sulco Inicial"].isna().any():
-        df_pneus["Sulco Inicial"].fillna(df_sulco["Sulco"].dropna().median(), inplace=True)
 
-    # Cálculos derivados
+    if df_pneus["Sulco Inicial"].isna().any():
+        df_pneus["Sulco Inicial"] = df_pneus["Sulco Inicial"].fillna(df_sulco["Sulco"].dropna().median())
+
+    # ----------------- CÁLCULOS -----------------
     df_pneus["Sulco Consumido"] = df_pneus["Sulco Inicial"] - df_pneus["Aferição - Sulco"]
     df_pneus["Desgaste (mm/km)"] = np.where(
-        (df_pneus["Km Rodado até Aferição"].notna()) & (df_pneus["Km Rodado até Aferição"]>0),
-        df_pneus["Sulco Consumido"]/df_pneus["Km Rodado até Aferição"],
+        df_pneus["Km Rodado até Aferição"].notna() & (df_pneus["Km Rodado até Aferição"]>0),
+        df_pneus["Sulco Consumido"] / df_pneus["Km Rodado até Aferição"],
         np.nan
     )
-    df_pneus["Tipo Veículo"] = df_pneus.get("Veículo - Descrição", pd.Series(["Outro"]*len(df_pneus))).apply(classificar_veiculo)
 
-    # Ordem de colunas
+    df_pneus["Tipo Veículo"] = df_pneus.get("Veículo - Descrição", "").apply(classificar_veiculo)
+
+    # ----------------- ORDEM DE COLUNAS -----------------
     cols = df_pneus.columns.tolist()
     def insert_after(col_list, new_col, after_col):
-        if new_col not in col_list: return col_list
+        if new_col not in col_list:
+            return col_list
         col_list = [c for c in col_list if c!=new_col]
-        idx = col_list.index(after_col)+1 if after_col in col_list else 0
+        if after_col in col_list:
+            idx = col_list.index(after_col)+1
+        else:
+            idx=0
         return col_list[:idx]+[new_col]+col_list[idx:]
     if "Vida" in cols and "Sulco Inicial" in cols:
         cols = insert_after(cols, "Sulco Inicial", "Vida")
@@ -166,25 +184,31 @@ if arquivo:
     df_pneus = df_pneus[cols]
 
     # ----------------- ABAS -----------------
-    aba1, aba2 = st.tabs(["📌 Indicadores", "📏 Medidas de Sulco"])
+    aba1, aba2, aba3, aba4, aba5 = st.tabs([
+        "📌 Indicadores",
+        "📈 Gráficos",
+        "📏 Medidas de Sulco",
+        "📑 Tabela Completa",
+        "📖 Legenda"
+    ])
 
     # ----------------- INDICADORES -----------------
     with aba1:
         st.subheader("📌 Indicadores Gerais")
-
         total_pneus = df_pneus["Referência"].nunique() if "Referência" in df_pneus.columns else len(df_pneus)
-        estoque = 99
-        sucata = 14
-        caminhao = 383
+        status_counts = df_pneus["Status"].value_counts(dropna=False) if "Status" in df_pneus.columns else pd.Series()
+        estoque = int(status_counts.get("Estoque",0))
+        sucata = int(status_counts.get("Sucata",0))
+        caminhao = int(status_counts.get("Caminhão",0))
 
-        col1, col2, col3, col4 = st.columns(4)
+        col1,col2,col3,col4 = st.columns(4)
         col1.metric("🛞 Total de Pneus", total_pneus)
         col2.metric("📦 Estoque", estoque)
         col3.metric("♻️ Sucata", sucata)
         col4.metric("🚚 Caminhão", caminhao)
 
     # ----------------- MEDIDAS DE SULCO -----------------
-    with aba2:
+    with aba3:
         st.subheader("📏 Medidas de Sulco (com cálculos)")
         cols_show = [c for c in [
             "Referência","Veículo - Placa","Veículo - Descrição","Marca (Atual)","Modelo (Atual)",
@@ -192,15 +216,11 @@ if arquivo:
             "Desgaste (mm/km)","Posição","Sigla da Posição"
         ] if c in df_pneus.columns]
         df_show = df_pneus[cols_show].copy()
+        # adiciona " km" na coluna de km
+        df_show["Km Rodado até Aferição"] = df_show["Km Rodado até Aferição"].apply(lambda x: f"{x:,.0f} km" if pd.notna(x) else "-")
         st.dataframe(
-            df_show.style.applymap(colorir_sulco, subset=["Aferição - Sulco"])
-                         .format({
-                             "Sulco Inicial":"{:.2f}",
-                             "Aferição - Sulco":"{:.2f}",
-                             "Sulco Consumido":"{:.2f}",
-                             "Desgaste (mm/km)":"{:.6f}",
-                             "Km Rodado até Aferição":"{:,.0f} km"
-                         }),
+            df_show.style.applymap(colorir_sulco, subset=["Aferição - Sulco"]) \
+                         .format({"Sulco Inicial":"{:.2f}","Aferição - Sulco":"{:.2f}","Sulco Consumido":"{:.2f}","Desgaste (mm/km)":"{:.6f}"}),
             use_container_width=True
         )
 else:
