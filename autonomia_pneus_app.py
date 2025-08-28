@@ -95,15 +95,12 @@ if arquivo:
     df_sulco.columns  = df_sulco.columns.str.strip()
 
     # ----------------- AJUSTES DE NOMES DE COLUNAS -----------------
-    # Modelo
     if "Modelo" in df_pneus.columns and "Modelo (Atual)" not in df_pneus.columns:
         df_pneus = df_pneus.rename(columns={"Modelo": "Modelo (Atual)"})
     if "Modelo" in df_sulco.columns and "Modelo (Atual)" not in df_sulco.columns:
         df_sulco = df_sulco.rename(columns={"Modelo": "Modelo (Atual)"})
-    # Sulco
     if "SULCO" in df_sulco.columns and "Sulco" not in df_sulco.columns:
         df_sulco = df_sulco.rename(columns={"SULCO": "Sulco"})
-    # Posição
     df_posicao = df_posicao.rename(columns={
         "Sigla": "Sigla da Posição",
         "SIGLA": "Sigla da Posição",
@@ -198,13 +195,10 @@ if arquivo:
         cols = cols[:si_idx+1]+["Status"]+cols[si_idx+1:]
     df_pneus = df_pneus[cols]
 
-    # ----------------- ABAS -----------------
-    aba1, aba2, aba3, aba4, aba5 = st.tabs([
+    # ----------------- ABAS (APENAS DUAS) -----------------
+    aba1, aba2 = st.tabs([
         "📌 Indicadores",
-        "📈 Gráficos",
-        "📏 Medidas de Sulco",
-        "📑 Tabela Completa",
-        "📖 Legenda"
+        "📏 Medidas de Sulco"
     ])
 
     # ----------------- INDICADORES -----------------
@@ -223,7 +217,7 @@ if arquivo:
         col4.metric("🚚 Caminhão", caminhao)
 
     # ----------------- MEDIDAS DE SULCO -----------------
-    with aba3:
+    with aba2:
         st.subheader("📏 Medidas de Sulco (com cálculos)")
         cols_show = [c for c in [
             "Referência","Veículo - Placa","Veículo - Descrição","Marca (Atual)","Modelo (Atual)",
