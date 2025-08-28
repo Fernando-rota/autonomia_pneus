@@ -95,12 +95,25 @@ if arquivo:
     df_sulco.columns  = df_sulco.columns.str.strip()
 
     # ----------------- AJUSTES DE NOMES DE COLUNAS -----------------
+    # Modelo
     if "Modelo" in df_pneus.columns and "Modelo (Atual)" not in df_pneus.columns:
         df_pneus = df_pneus.rename(columns={"Modelo": "Modelo (Atual)"})
     if "Modelo" in df_sulco.columns and "Modelo (Atual)" not in df_sulco.columns:
         df_sulco = df_sulco.rename(columns={"Modelo": "Modelo (Atual)"})
+    # Sulco
     if "SULCO" in df_sulco.columns and "Sulco" not in df_sulco.columns:
         df_sulco = df_sulco.rename(columns={"SULCO": "Sulco"})
+    # Posição
+    df_posicao = df_posicao.rename(columns={
+        "Sigla": "Sigla da Posição",
+        "SIGLA": "Sigla da Posição",
+        "POSIÇÃO": "Posição",
+        "Posição": "Posição"
+    })
+    if "Sigla" in df_pneus.columns and "Sigla da Posição" not in df_pneus.columns:
+        df_pneus = df_pneus.rename(columns={"Sigla": "Sigla da Posição"})
+    if "SIGLA" in df_pneus.columns and "Sigla da Posição" not in df_pneus.columns:
+        df_pneus = df_pneus.rename(columns={"SIGLA": "Sigla da Posição"})
 
     # ----------------- NORMALIZAÇÕES -----------------
     df_pneus["Aferição - Sulco"] = df_pneus["Aferição - Sulco"].apply(to_float)
@@ -127,12 +140,6 @@ if arquivo:
     df_pneus.loc[df_pneus["Km Rodado até Aferição"] <= 0, "Km Rodado até Aferição"] = np.nan
 
     # ----------------- MAPA DE POSIÇÃO -----------------
-    col_map_pos = {}
-    if "SIGLA" in df_posicao.columns:
-        col_map_pos["SIGLA"] = "Sigla da Posição"
-    if "POSIÇÃO" in df_posicao.columns:
-        col_map_pos["POSIÇÃO"] = "Posição"
-    df_posicao = df_posicao.rename(columns=col_map_pos)
     if "Sigla da Posição" in df_pneus.columns and "Sigla da Posição" in df_posicao.columns:
         df_pneus = df_pneus.merge(df_posicao, on="Sigla da Posição", how="left")
 
