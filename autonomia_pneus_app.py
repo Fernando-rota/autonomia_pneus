@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-import plotly.graph_objects as go
 import re
 import unicodedata
 from io import BytesIO
@@ -180,23 +179,32 @@ if arquivo:
         tipo_sel = st.selectbox("Filtrar por Tipo de Veículo", tipos)
         df_show = df_pneus.copy()
         if tipo_sel != "Todos":
-            df_show = df_show[df_show["Tipo Veículo"]==tipo_sel]
+            df_show = df_show[df_show["Tipo Veículo"] == tipo_sel]
 
         # Colunas a mostrar
-        cols_show = ["Referência","Veículo - Placa","Veículo - Descrição","Marca (Atual)","Modelo (Atual)",
-                     "Vida","Sulco Inicial","Status","Aferição - Sulco","Sulco Consumido","Desgaste (mm/km)",
-                     "Posição","Sigla da Posição","Status Sulco"]
+        cols_show = [
+            "Referência","Veículo - Placa","Veículo - Descrição","Marca (Atual)","Modelo (Atual)",
+            "Vida","Sulco Inicial","Status","Aferição - Sulco","Sulco Consumido","Desgaste (mm/km)",
+            "Posição","Sigla da Posição","Status Sulco"
+        ]
         cols_show = [c for c in cols_show if c in df_show.columns]
         df_show = df_show[cols_show]
 
-        # Formatação
-        df_show["Km Rodado até Aferição"] = df_show.get("Km Rodado até Aferição","").apply(lambda x: f"{x:,.0f} km" if pd.notna(x) else "-")
+        # Formatação Km Rodado
+        if "Km Rodado até Aferição" in df_show.columns:
+            df_show["Km Rodado até Aferição"] = df_show["Km Rodado até Aferição"].apply(
+                lambda x: f"{x:,.0f} km" if pd.notna(x) else "-"
+            )
+
         st.dataframe(
-            df_show.style.applymap(colorir_sulco, subset=["Sulco Inicial","Aferição - Sulco","Sulco Consumido","Desgaste (mm/km)"]),
-            use_container_width=True, height=600
+            df_show.style.applymap(
+                colorir_sulco, subset=["Sulco Inicial","Aferição - Sulco","Sulco Consumido","Desgaste (mm/km)"]
+            ),
+            use_container_width=True,
+            height=600
         )
 
-        # Exportação
+        # Exportação para Excel
         def to_excel(df):
             output = BytesIO()
             writer = pd.ExcelWriter(output, engine='xlsxwriter')
@@ -206,6 +214,10 @@ if arquivo:
             return processed_data
 
         df_xlsx = to_excel(df_show)
-        st.download_button(label='📥 Baixar tabela filtrada', data=df_xlsx, file_name='medidas_de_sulco.xlsx')
+        st.download_button(
+            label='📥 Baixar tabela filtrada',
+            data=df_xlsx,
+            file_name='medidas_de_sulco.xlsx'
+        )
 else:
     st.info("Aguardando upload do arquivo Excel…")
