@@ -94,6 +94,24 @@ if arquivo:
     df_posicao.columns = df_posicao.columns.str.strip()
     df_sulco.columns  = df_sulco.columns.str.strip()
 
+    # ----------------- AJUSTES DE NOMES DE COLUNAS -----------------
+    if "Modelo" in df_pneus.columns and "Modelo (Atual)" not in df_pneus.columns:
+        df_pneus = df_pneus.rename(columns={"Modelo": "Modelo (Atual)"})
+    if "Modelo" in df_sulco.columns and "Modelo (Atual)" not in df_sulco.columns:
+        df_sulco = df_sulco.rename(columns={"Modelo": "Modelo (Atual)"})
+    if "SULCO" in df_sulco.columns and "Sulco" not in df_sulco.columns:
+        df_sulco = df_sulco.rename(columns={"SULCO": "Sulco"})
+    df_posicao = df_posicao.rename(columns={
+        "Sigla": "Sigla da Posição",
+        "SIGLA": "Sigla da Posição",
+        "POSIÇÃO": "Posição",
+        "Posição": "Posição"
+    })
+    if "Sigla" in df_pneus.columns and "Sigla da Posição" not in df_pneus.columns:
+        df_pneus = df_pneus.rename(columns={"Sigla": "Sigla da Posição"})
+    if "SIGLA" in df_pneus.columns and "Sigla da Posição" not in df_pneus.columns:
+        df_pneus = df_pneus.rename(columns={"SIGLA": "Sigla da Posição"})
+
     # ----------------- NORMALIZAÇÕES -----------------
     df_pneus["Aferição - Sulco"] = df_pneus["Aferição - Sulco"].apply(to_float)
     df_sulco["Sulco"] = df_sulco["Sulco"].apply(to_float)
@@ -119,12 +137,6 @@ if arquivo:
     df_pneus.loc[df_pneus["Km Rodado até Aferição"] <= 0, "Km Rodado até Aferição"] = np.nan
 
     # ----------------- MAPA DE POSIÇÃO -----------------
-    col_map_pos = {}
-    if "SIGLA" in df_posicao.columns:
-        col_map_pos["SIGLA"] = "Sigla da Posição"
-    if "POSIÇÃO" in df_posicao.columns:
-        col_map_pos["POSIÇÃO"] = "Posição"
-    df_posicao = df_posicao.rename(columns=col_map_pos)
     if "Sigla da Posição" in df_pneus.columns and "Sigla da Posição" in df_posicao.columns:
         df_pneus = df_pneus.merge(df_posicao, on="Sigla da Posição", how="left")
 
@@ -183,13 +195,10 @@ if arquivo:
         cols = cols[:si_idx+1]+["Status"]+cols[si_idx+1:]
     df_pneus = df_pneus[cols]
 
-    # ----------------- ABAS -----------------
-    aba1, aba2, aba3, aba4, aba5 = st.tabs([
+    # ----------------- ABAS (APENAS DUAS) -----------------
+    aba1, aba2 = st.tabs([
         "📌 Indicadores",
-        "📈 Gráficos",
-        "📏 Medidas de Sulco",
-        "📑 Tabela Completa",
-        "📖 Legenda"
+        "📏 Medidas de Sulco"
     ])
 
     # ----------------- INDICADORES -----------------
@@ -208,7 +217,7 @@ if arquivo:
         col4.metric("🚚 Caminhão", caminhao)
 
     # ----------------- MEDIDAS DE SULCO -----------------
-    with aba3:
+    with aba2:
         st.subheader("📏 Medidas de Sulco (com cálculos)")
         cols_show = [c for c in [
             "Referência","Veículo - Placa","Veículo - Descrição","Marca (Atual)","Modelo (Atual)",
@@ -216,7 +225,6 @@ if arquivo:
             "Desgaste (mm/km)","Posição","Sigla da Posição"
         ] if c in df_pneus.columns]
         df_show = df_pneus[cols_show].copy()
-        # adiciona " km" na coluna de km
         df_show["Km Rodado até Aferição"] = df_show["Km Rodado até Aferição"].apply(lambda x: f"{x:,.0f} km" if pd.notna(x) else "-")
         st.dataframe(
             df_show.style.applymap(colorir_sulco, subset=["Aferição - Sulco"]) \
