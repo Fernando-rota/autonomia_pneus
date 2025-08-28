@@ -94,6 +94,14 @@ if arquivo:
     df_posicao.columns = df_posicao.columns.str.strip()
     df_sulco.columns  = df_sulco.columns.str.strip()
 
+    # ----------------- AJUSTES DE NOMES DE COLUNAS -----------------
+    if "Modelo" in df_pneus.columns and "Modelo (Atual)" not in df_pneus.columns:
+        df_pneus = df_pneus.rename(columns={"Modelo": "Modelo (Atual)"})
+    if "Modelo" in df_sulco.columns and "Modelo (Atual)" not in df_sulco.columns:
+        df_sulco = df_sulco.rename(columns={"Modelo": "Modelo (Atual)"})
+    if "SULCO" in df_sulco.columns and "Sulco" not in df_sulco.columns:
+        df_sulco = df_sulco.rename(columns={"SULCO": "Sulco"})
+
     # ----------------- NORMALIZAÇÕES -----------------
     df_pneus["Aferição - Sulco"] = df_pneus["Aferição - Sulco"].apply(to_float)
     df_sulco["Sulco"] = df_sulco["Sulco"].apply(to_float)
@@ -216,7 +224,6 @@ if arquivo:
             "Desgaste (mm/km)","Posição","Sigla da Posição"
         ] if c in df_pneus.columns]
         df_show = df_pneus[cols_show].copy()
-        # adiciona " km" na coluna de km
         df_show["Km Rodado até Aferição"] = df_show["Km Rodado até Aferição"].apply(lambda x: f"{x:,.0f} km" if pd.notna(x) else "-")
         st.dataframe(
             df_show.style.applymap(colorir_sulco, subset=["Aferição - Sulco"]) \
