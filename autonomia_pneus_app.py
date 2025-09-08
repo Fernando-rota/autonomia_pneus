@@ -7,6 +7,30 @@ import numpy as np
 
 # ----------------- CONFIG -----------------
 st.set_page_config(page_title="Gestão de Pneus", layout="wide")
+
+# CSS customizado
+st.markdown("""
+<style>
+/* Fundo */
+body {
+    background-color: #f9f9f9;
+}
+/* Cards de métricas */
+div[data-testid="metric-container"] {
+    background: white;
+    border: 1px solid #e6e6e6;
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.1);
+}
+/* Dataframe estilizado */
+[data-testid="stDataFrame"] {
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+</style>
+""", unsafe_allow_html=True)
+
 st.markdown("<h2 style='text-align:center; color:#1E88E5;'>📊 Gestão de Pneus</h2>", unsafe_allow_html=True)
 
 # ----------------- HELPERS -----------------
@@ -78,7 +102,7 @@ def classificar_veiculo(desc):
         return "Carreta"
     return "Outro"
 
-# ----------------- CACHE DE LEITURA -----------------
+# ----------------- CACHE -----------------
 @st.cache_data
 def carregar_planilhas(arquivo):
     return pd.read_excel(arquivo, engine="openpyxl", sheet_name=None)
@@ -96,11 +120,11 @@ if arquivo:
     df_posicao = sheets["posição"].copy()
     df_sulco = sheets["sulco"].copy()
 
-    # Strip de colunas
+    # Strip colunas
     for df in [df_pneus, df_posicao, df_sulco]:
         df.columns = df.columns.str.strip()
 
-    # Renomeando colunas
+    # Renomeações
     renomes = {
         "Modelo": "Modelo (Atual)",
         "SULCO": "Sulco",
@@ -127,7 +151,7 @@ if arquivo:
     else:
         df_pneus["Observação - Km"] = np.nan
 
-    # Cálculo do Km rodado
+    # Km rodado
     df_pneus["Km Rodado até Aferição"] = df_pneus["Vida do Pneu - Km. Rodado"]
     mask_km_vazio = df_pneus["Km Rodado até Aferição"].isna() | (df_pneus["Km Rodado até Aferição"] <= 0)
     df_pneus.loc[mask_km_vazio, "Km Rodado até Aferição"] = (
@@ -135,7 +159,7 @@ if arquivo:
     )
     df_pneus.loc[df_pneus["Km Rodado até Aferição"] <= 0, "Km Rodado até Aferição"] = np.nan
 
-    # Mapa de posição
+    # Posição
     if "Sigla da Posição" in df_pneus and "Sigla da Posição" in df_posicao:
         df_pneus = df_pneus.merge(df_posicao, on="Sigla da Posição", how="left")
 
@@ -202,7 +226,7 @@ if arquivo:
 
     # Medidas de Sulco
     with aba2:
-        st.subheader("📏 Medidas de Sulco (ordenado)")
+        st.subheader("📏 Medidas de Sulco")
 
         cols_show = [c for c in [
             "Referência","Veículo - Placa","Veículo - Descrição","Marca (Atual)","Modelo (Atual)",
@@ -211,9 +235,28 @@ if arquivo:
         ] if c in df_pneus]
 
         df_show = df_pneus[cols_show].copy()
-        df_show = df_show.sort_values(by="Aferição - Sulco", ascending=False)  # ORDEM DECRESCENTE
 
-        # Formatando
+        # KPIs de sulco
+        critico = (df_show["Aferição - Sulco"] < 2).sum()
+        alerta = ((df_show["Aferição - Sulco"] >= 2) & (df_show["Aferição - Sulco"] < 4)).sum()
+
+        k1, k2 = st.columns(2)
+        k1.metric("🔴 Pneus Críticos (<2mm)", critico)
+        k2.metric("🟡 Pneus em Alerta (2-4mm)", alerta)
+
+        # Filtros
+        with st.expander("🔎 Filtros"):
+            status_sel = st.multiselect("Status", df_show["Status"].dropna().unique())
+            if status_sel:
+                df_show = df_show[df_show["Status"].isin(status_sel)]
+
+            tipo_sel = st.multiselect("Tipo de Veículo", df_pneus["Tipo Veículo"].dropna().unique())
+            if tipo_sel:
+                df_show = df_show[df_pneus["Tipo Veículo"].isin(tipo_sel)]
+
+        # Ordenação
+        df_show = df_show.sort_values(by="Aferição - Sulco", ascending=False)
+
         if "Km Rodado até Aferição" in df_show:
             df_show["Km Rodado até Aferição"] = df_show["Km Rodado até Aferição"].apply(
                 lambda x: f"{x:,.0f} km" if pd.notna(x) else "-"
@@ -230,6 +273,23 @@ if arquivo:
             use_container_width=True,
             height=600
         )
+
+        # Gráficos adicionais
+        st.subheader("📈 Análises Visuais")
+        colg1, colg2 = st.columns(2)
+
+        with colg1:
+            fig = px.box(df_pneus, x="Tipo Veículo", y="Aferição - Sulco", color="Tipo Veículo",
+                         title="Sulco por Tipo de Veículo")
+            st.plotly_chart(fig, use_container_width=True)
+
+        with colg2:
+            fig = px.histogram(df_show, x="Sulco Consumido", nbins=20, title="Distribuição do Sulco Consumido")
+            st.plotly_chart(fig, use_container_width=True)
+
+        # Exportação
+        csv = df_show.to_csv(index=False).encode("utf-8")
+        st.download_button("⬇️ Baixar dados filtrados", csv, "medidas_sulco.csv", "text/csv")
 
 else:
     st.info("📂 Aguardando upload do arquivo Excel…")
