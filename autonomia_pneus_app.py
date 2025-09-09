@@ -4,6 +4,7 @@ import plotly.express as px
 import re
 import unicodedata
 import numpy as np
+from st_aggrid import AgGrid, GridOptionsBuilder
 
 # ----------------- CONFIGURAÇÃO DA PÁGINA -----------------
 st.set_page_config(page_title="Gestão de Pneus", layout="wide")
@@ -12,12 +13,11 @@ st.markdown("""
 <style>
 body { background-color: #f9f9f9; }
 div[data-testid="metric-container"] {
-    background: white;
-    border: 1px solid #e6e6e6;
     border-radius: 12px;
     padding: 16px;
     box-shadow: 0 1px 6px rgba(0,0,0,0.1);
 }
+h2, h3, h4 { color: #1E88E5; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -58,18 +58,6 @@ def normalize_text(s):
     s = "".join(c for c in s if not unicodedata.combining(c))
     return s.upper()
 
-def colorir_sulco(val):
-    try:
-        val_float = float(val)
-        if val_float < 2:
-            return "background-color: #FF6B6B; color: white"
-        elif val_float < 4:
-            return "background-color: #FFD93D; color: black"
-        else:
-            return "background-color: #6BCB77; color: white"
-    except:
-        return ""
-
 def classificar_veiculo(desc):
     if pd.isna(desc):
         return "Outro"
@@ -90,11 +78,28 @@ def classificar_veiculo(desc):
         return "Carreta"
     return "Outro"
 
+def colorir_sulco(val):
+    try:
+        val_float = float(val)
+        if val_float < 2:
+            return "background-color: #FF6B6B; color: white"
+        elif val_float < 4:
+            return "background-color: #FFD93D; color: black"
+        else:
+            return "background-color: #6BCB77; color: white"
+    except:
+        return ""
+
 # ----------------- UPLOAD -----------------
 arquivo = st.file_uploader("📂 Carregue a planilha de pneus", type=["xlsx", "xls"])
 
-st.markdown("<h1 style='text-align:center; color:#1E88E5;'>📊 Gestão de Pneus</h1>", unsafe_allow_html=True)
-st.markdown("<h3 style='text-align:center; color:gray;'>Monitoramento de Sulcos e Indicadores de Frota</h3>", unsafe_allow_html=True)
+st.markdown("""
+<div style="text-align:center; padding:15px; background-color:#1E88E5; color:white; border-radius:10px;">
+    <h1 style="margin:5px;">📊 Gestão de Pneus</h1>
+    <p style="margin:0;">Monitoramento de Sulcos e Indicadores de Frota</p>
+</div>
+""", unsafe_allow_html=True)
+
 st.markdown("---")
 st.subheader("🎯 Objetivo da Análise")
 st.write("""
@@ -189,14 +194,30 @@ if arquivo:
         estoque = (df_pneus["Status"]=="Estoque").sum() if "Status" in df_pneus.columns else 0
         sucata  = (df_pneus["Status"]=="Sucata").sum() if "Status" in df_pneus.columns else 0
         caminhao = (df_pneus["Status"]=="Caminhão").sum() if "Status" in df_pneus.columns else 0
-        col1,col2,col3,col4 = st.columns(4)
-        col1.metric("🛞 Total de Pneus", total_pneus)
-        col2.metric("📦 Estoque", estoque)
-        col3.metric("♻️ Sucata", sucata)
-        col4.metric("🚚 Caminhão", caminhao)
-        st.markdown("### 📈 Distribuição do Sulco")
-        fig = px.histogram(df_pneus, x="Aferição - Sulco", nbins=20, color="Tipo Veículo")
-        st.plotly_chart(fig, use_container_width=True)
+
+        # Cards customizados
+        st.markdown(f"""
+        <div style="display:flex; gap:15px; justify-content:center; margin-bottom:20px;">
+            <div style="background:#6BCB77; color:white; padding:15px; border-radius:10px; flex:1; text-align:center;">
+                🛞 Total de Pneus<br><b>{total_pneus}</b>
+            </div>
+            <div style="background:#FFD93D; color:black; padding:15px; border-radius:10px; flex:1; text-align:center;">
+                📦 Estoque<br><b>{estoque}</b>
+            </div>
+            <div style="background:#FF6B6B; color:white; padding:15px; border-radius:10px; flex:1; text-align:center;">
+                ♻️ Sucata<br><b>{sucata}</b>
+            </div>
+            <div style="background:#1E88E5; color:white; padding:15px; border-radius:10px; flex:1; text-align:center;">
+                🚚 Caminhão<br><b>{caminhao}</b>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Histograma
+        fig_hist = px.histogram(df_pneus, x="Aferição - Sulco", nbins=20, color="Tipo Veículo",
+                                color_discrete_sequence=px.colors.qualitative.Set2)
+        fig_hist.update_layout(title="Distribuição de Sulcos", plot_bgcolor="#f9f9f9")
+        st.plotly_chart(fig_hist, use_container_width=True)
 
     # --- Medidas de Sulco ---
     with aba2:
@@ -212,32 +233,50 @@ if arquivo:
         criticos = (df_show["Condição"]=="🔴 Crítico").sum()
         alerta   = (df_show["Condição"]=="🟡 Alerta").sum()
         ok       = (df_show["Condição"]=="🟢 Ok").sum()
-        k1,k2,k3 = st.columns(3)
-        k1.metric("🔴 Pneus Críticos", criticos)
-        k2.metric("🟡 Pneus em Alerta", alerta)
-        k3.metric("🟢 Pneus Ok", ok)
 
-        # Filtro por Status
+        # Cards condição pneus
+        st.markdown(f"""
+        <div style="display:flex; gap:15px; justify-content:center; margin-bottom:20px;">
+            <div style="background:#FF6B6B; color:white; padding:15px; border-radius:10px; flex:1; text-align:center;">
+                🔴 Pneus Críticos<br><b>{criticos}</b>
+            </div>
+            <div style="background:#FFD93D; color:black; padding:15px; border-radius:10px; flex:1; text-align:center;">
+                🟡 Pneus em Alerta<br><b>{alerta}</b>
+            </div>
+            <div style="background:#6BCB77; color:white; padding:15px; border-radius:10px; flex:1; text-align:center;">
+                🟢 Pneus Ok<br><b>{ok}</b>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Filtros
         with st.expander("🔎 Filtros"):
             if "Status" in df_show.columns:
                 status_sel = st.multiselect("Status", df_show["Status"].dropna().unique())
                 if status_sel:
                     df_show = df_show[df_show["Status"].isin(status_sel)]
 
-        # Mostrar tabela
+        # Tabela interativa
         cols_show = [c for c in ["Referência","Veículo - Placa","Veículo - Descrição","Marca (Atual)","Modelo (Atual)",
                                  "Vida","Sulco Inicial","Aferição - Sulco","% Sulco Restante","Condição","Sulco Consumido",
                                  "Km Rodado até Aferição","Desgaste (mm/km)","Km Restante (estimado)","Posição","Sigla da Posição"]
                      if c in df_show.columns]
-        st.dataframe(df_show[cols_show].style.applymap(colorir_sulco, subset=["Aferição - Sulco"]), use_container_width=True)
+        gb = GridOptionsBuilder.from_dataframe(df_show[cols_show])
+        gb.configure_columns(["Aferição - Sulco"], cellStyle=lambda x: {'backgroundColor': '#6BCB77' if x.value>=4 else '#FFD93D' if x.value>=2 else '#FF6B6B', 'color':'white'})
+        gridOptions = gb.build()
+        AgGrid(df_show[cols_show], gridOptions=gridOptions, enable_enterprise_modules=False, height=400)
 
         # Gráficos de apoio
         colg1,colg2 = st.columns(2)
         with colg1:
-            fig_hist = px.histogram(df_show, x="Aferição - Sulco", nbins=20, color="Tipo Veículo", title="Distribuição de Sulcos")
-            st.plotly_chart(fig_hist, use_container_width=True)
+            fig_hist2 = px.histogram(df_show, x="Aferição - Sulco", nbins=20, color="Condição",
+                                     color_discrete_map={"🔴 Crítico":"#FF6B6B","🟡 Alerta":"#FFD93D","🟢 Ok":"#6BCB77"})
+            fig_hist2.update_layout(title="Distribuição de Sulcos", plot_bgcolor="#f9f9f9")
+            st.plotly_chart(fig_hist2, use_container_width=True)
         with colg2:
-            fig_box = px.box(df_show, x="Tipo Veículo", y="Aferição - Sulco", title="Sulco por Tipo de Veículo")
+            fig_box = px.box(df_show, x="Tipo Veículo", y="Aferição - Sulco", color="Condição",
+                             color_discrete_map={"🔴 Crítico":"#FF6B6B","🟡 Alerta":"#FFD93D","🟢 Ok":"#6BCB77"})
+            fig_box.update_layout(title="Sulco por Tipo de Veículo", plot_bgcolor="#f9f9f9")
             st.plotly_chart(fig_box, use_container_width=True)
 
         # Exportação
