@@ -18,9 +18,15 @@ if arquivo:
     df_pneus = sheets["pneus"]
     df_posicao = sheets["posição"]
 
+    # Padronizar colunas de posição
+    if "Sigla" in df_pneus.columns:
+        df_pneus = df_pneus.rename(columns={"Sigla": "Sigla da Posição"})
+    if "Sigla" in df_posicao.columns:
+        df_posicao = df_posicao.rename(columns={"Sigla": "Sigla da Posição"})
+
     df_pneus.columns = df_pneus.columns.str.strip()
     df_posicao.columns = df_posicao.columns.str.strip()
-    df_pneus = df_pneus.merge(df_posicao, left_on="Sigla", right_on="Sigla", how="left")
+    df_pneus = df_pneus.merge(df_posicao, on="Sigla da Posição", how="left")
 
     # ----------------- FILTRO POR PLACA -----------------
     placas = df_pneus["Veículo - Placa"].dropna().unique()
